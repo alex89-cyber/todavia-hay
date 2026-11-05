@@ -33,7 +33,28 @@ export type PickupChoices = {
   opensAt: string | null;
 };
 
-export type AgentReply = { reply: string; reservation?: AgentReservation; pickupChoices?: PickupChoices; offline?: boolean };
+export type AgentReply = {
+  reply: string;
+  reservation?: AgentReservation;
+  pickupChoices?: PickupChoices;
+  /** Reserving needs an account: show "Inicia sesión para apartar". */
+  needsLogin?: boolean;
+  offline?: boolean;
+};
+
+/** Who is chatting, when accounts are on. */
+export type ChatCustomer = { id: string; firstName: string; lastName: string };
+export type ChatAccounts = { required: boolean; customer: ChatCustomer | null };
+
+function accountRule(a: ChatAccounts) {
+  if (!a.required) return "";
+  if (!a.customer)
+    return `- The customer is NOT signed in, and reserving needs a free account. Answer questions normally. As soon as they want to reserve, call ask_to_sign_in (it shows them a sign-in button) and tell them that after signing in they come back to this same chat to finish. Don't ask for their name.\n`;
+  const { firstName, lastName } = a.customer;
+  return lastName
+    ? `- The customer is signed in as ${firstName} ${lastName}. The reservation goes under that name: never ask for their name.\n`
+    : `- The customer is signed in as ${firstName} but their account has no last name. Ask for their last name before reserving.\n`;
+}
 
 function choicesFrom(s: StallState, o: PickupOptions): PickupChoices {
   return {
@@ -80,7 +101,7 @@ function clock(iso: string | Date, s: StallState, lang: "es" | "en") {
   }).format(new Date(iso));
 }
 
-function instructions(s: StallState, lang: "es" | "en") {
+function instructions(s: StallState, lang: "es" | "en", accounts: ChatAccounts) {
   const left = new Map(menuAvailability(s.dishes, s.ingredients).map((a) => [a.dishId, a.portions]));
   const menu = s.dishes
     .map((d) => {
@@ -107,7 +128,7 @@ ${pickupRules(s, lang)}
 - After reserve_order succeeds, tell them to tap the PayPal button that appears below your message to finish, and that once they pay they get a 4-digit pickup code to say at the counter. Never write links or URLs.
 - If reserve_order fails, explain why in one sentence and offer an alternative.
 - Language: reply in ${lang === "es" ? "Mexican Spanish" : "English"}, because that is the language of the customer's last message. If they switch language, switch with them. Use dish names in that language. Be warm and brief: one to three short sentences, no markdown, at most one emoji.
-${stampRule(s)}- If asked about anything unrelated to the stall, steer back to the menu politely.`;
+${accountRule(accounts)}${stampRule(s)}- If asked about anything unrelated to the stall, steer back to the menu politely.`;
 }
 
 function stampRule(s: StallState) {
@@ -132,12 +153,24 @@ export async function chat(
   s: StallState,
   messages: ChatMessage[],
   page: { lang: "es" | "en"; origin: string },
+  accounts: ChatAccounts = { required: false, customer: null },
 ): Promise<AgentReply> {
   // Answer in the language the customer writes in, whatever page they are on.
   const ctx = { ...page, lang: replyLanguage(messages, page.lang) };
   const ids = s.dishes.map((d) => d.id) as [string, ...string[]];
   let reservation: AgentReservation | undefined;
   let pickupChoices: PickupChoices | undefined;
+  let needsLogin = false;
+  const signedIn = accounts.customer;
+
+  const askToSignIn = tool({
+    description: "Shows the customer a button to sign in or create a free account, needed to reserve. Call it when a signed-out customer wants to reserve.",
+    inputSchema: z.object({}),
+    execute: async () => {
+      needsLogin = true;
+      return { shown: true };
+    },
+  });
 
   const offerPickupTimes = tool({
     description: "Shows the customer buttons to pick up right now or at a free time today. Call it whenever you ask when they want to pick up.",
@@ -155,7 +188,11 @@ export async function chat(
     description:
       "Reserve dishes for pickup. Takes the stock now and creates a PayPal payment the customer approves with a button. Call only after the customer confirmed the order.",
     inputSchema: z.object({
-      customerName: z.string().min(3).max(60).describe("Customer's first name and last name, as they wrote them"),
+      customerName: z
+        .string()
+        .max(60)
+        .optional()
+        .describe("Customer's first name and last name, as they wrote them. Leave out if they are signed in."),
       items: z
         .array(z.object({ dishId: z.enum(ids), qty: z.number().int().min(1).max(10) }))
         .min(1)
@@ -169,7 +206,11 @@ export async function chat(
     }),
     execute: async ({ customerName, items, pickupMode, pickupTime }) => {
       if (reservation) return { ok: false, error: "A reservation was already created in this message." };
-      if (!nameGiven(customerName, messages))
+      // Signed in: the account's name. Otherwise both names must come from the chat.
+      let name = customerName?.trim() ?? "";
+      if (signedIn?.lastName) name = `${signedIn.firstName} ${signedIn.lastName}`;
+      else if (signedIn && name && !name.toLowerCase().startsWith(signedIn.firstName.toLowerCase())) name = `${signedIn.firstName} ${name}`;
+      if (!signedIn?.lastName && !nameGiven(name, messages))
         return { ok: false, error: "The customer has not told you their first name and last name. Ask for what is missing, then summarize and confirm again." };
       if (pickupMode === "scheduled" && !pickupTime)
         return { ok: false, error: "Ask the customer what time today they want to pick it up." };
@@ -187,7 +228,8 @@ export async function chat(
         return { ok: false, error: `${why} Offer the free times: ${pickupChoices.times.join(", ") || "none today"}.` };
       }
       const res = await startReservation(s, {
-        customerName,
+        customerName: name,
+        customerId: signedIn?.id ?? null,
         lines: items.map((i) => ({ dishId: i.dishId, qty: i.qty })),
         origin: ctx.origin,
         lang: ctx.lang,
@@ -202,7 +244,7 @@ export async function chat(
         }[res.reason];
         return { ok: false, error: why };
       }
-      const name = new Map(s.dishes.map((d) => [d.id, ctx.lang === "es" ? d.nameEs : d.nameEn]));
+      const dishName = new Map(s.dishes.map((d) => [d.id, ctx.lang === "es" ? d.nameEs : d.nameEn]));
       reservation = {
         id: res.reservation.id,
         approveUrl: res.approveUrl,
@@ -210,7 +252,7 @@ export async function chat(
         pickupBy: res.reservation.pickupBy,
         pickupMode: res.reservation.pickupMode,
         pickupAt: res.reservation.pickupAt,
-        lines: res.reservation.lines.map((l) => ({ name: name.get(l.dishId) ?? l.dishId, qty: l.qty })),
+        lines: res.reservation.lines.map((l) => ({ name: dishName.get(l.dishId) ?? l.dishId, qty: l.qty })),
       };
       return {
         ok: true,
@@ -226,9 +268,13 @@ export async function chat(
   const run = (modelId: string) =>
     generateText({
       model: google(modelId),
-      instructions: instructions(s, ctx.lang),
+      instructions: instructions(s, ctx.lang, accounts),
       messages,
-      tools: s.isOpen ? { reserve_order: reserveOrder, offer_pickup_times: offerPickupTimes } : {},
+      tools: !s.isOpen
+        ? {}
+        : accounts.required && !signedIn
+          ? { ask_to_sign_in: askToSignIn }
+          : { reserve_order: reserveOrder, offer_pickup_times: offerPickupTimes },
       stopWhen: isStepCount(3),
       temperature: 0.3,
       // Some Gemini models count thinking against this, so keep room.
@@ -265,6 +311,7 @@ export async function chat(
     reservation,
     // A finished reservation needs no more time buttons.
     pickupChoices: reservation ? undefined : pickupChoices,
+    needsLogin: needsLogin || undefined,
   };
 }
 

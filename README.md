@@ -71,6 +71,7 @@ Without any keys the app runs on an in-memory store with a seeded demo day. The 
 | Variable | What for |
 | --- | --- |
 | `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Store data in Supabase instead of memory |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Turns on accounts (email + password, Google). Owners and customers sign in; replaces `OWNER_PIN`. Needs migration 0015 |
 | `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` | Reservations with PayPal (sandbox unless `PAYPAL_ENV=live`) |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | Customer agent and cash-up assistant (Gemini) |
 | `GEMINI_MODEL`, `STUDIO_GEMINI_MODEL` | Optional model overrides (both default to `gemini-flash-lite-latest`) |

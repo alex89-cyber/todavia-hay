@@ -44,10 +44,20 @@ export function heldOrder(s: StallState, lang: "es" | "en", r: Reservation, now 
 export const holdIds = (cookie: string | undefined) => (cookie ?? "").split(",").filter(Boolean);
 
 /** Active reservations this browser made (cookie set on the PayPal return), newest first. */
-export function heldOrders(s: StallState, lang: "es" | "en", cookie: string | undefined): HeldOrder[] {
+export function heldOrders(
+  s: StallState,
+  lang: "es" | "en",
+  cookie: string | undefined,
+  customerId: string | null = null,
+): HeldOrder[] {
   const ids = holdIds(cookie);
   return s.reservations
-    .filter((r) => ids.includes(r.id) && isActive(r) && r.status === "authorized")
+    .filter(
+      (r) =>
+        (ids.includes(r.id) || (customerId !== null && r.customerId === customerId)) &&
+        isActive(r) &&
+        r.status === "authorized",
+    )
     .sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id))
     .map((r) => heldOrder(s, lang, r));
 }

@@ -2,6 +2,8 @@ import { z } from "zod";
 import { agentAvailable, chat } from "@/lib/agent";
 import { origin } from "@/lib/origin";
 import { loadStall } from "@/lib/reservations";
+import { authEnabled } from "@/lib/auth/config";
+import { currentAccount } from "@/lib/auth/server";
 
 // POST /api/stalls/:slug/chat  { lang, messages }  → { reply, reservation? }
 // The client keeps the conversation; only the last turns are sent.
@@ -50,7 +52,13 @@ export async function POST(request: Request, ctx: RouteContext<"/api/stalls/[slu
   if (messages[messages.length - 1].role !== "user") return Response.json({ error: "bad_request" }, { status: 400 });
 
   try {
-    const out = await chat(s, messages, { lang: parsed.data.lang, origin: origin(request) });
+    const me = await currentAccount();
+    const out = await chat(
+      s,
+      messages,
+      { lang: parsed.data.lang, origin: origin(request) },
+      { required: authEnabled(), customer: me ? { id: me.id, firstName: me.firstName, lastName: me.lastName } : null },
+    );
     return Response.json(out, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     console.error("agent failed", e instanceof Error ? e.message : e, (e as { responseBody?: string })?.responseBody?.slice(0, 500) ?? "");

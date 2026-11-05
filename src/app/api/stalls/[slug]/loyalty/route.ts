@@ -210,7 +210,7 @@ export async function GET(
 ) {
   await connection();
 
-  if (!(await isOwner())) {
+  if (!(await isOwner((await ctx.params).slug))) {
     return unauthorized();
   }
 
@@ -245,7 +245,7 @@ export async function POST(
   request: Request,
   ctx: Context,
 ) {
-  if (!(await isOwner())) {
+  if (!(await isOwner((await ctx.params).slug))) {
     return unauthorized();
   }
 

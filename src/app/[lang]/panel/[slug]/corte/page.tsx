@@ -292,7 +292,7 @@ async function Report({
 
   // Never load private sales until owner authentication
   // has been verified.
-  if (!(await isOwner())) {
+  if (!(await isOwner(slug))) {
     return <OwnerLogin stallName={state.name} t={t} />;
   }
 

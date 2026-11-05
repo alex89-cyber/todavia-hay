@@ -673,6 +673,7 @@ export function PublicStall({
   holds,
   stampCard,
   vapidKey,
+  signedIn = false,
   t,
 }: {
   initial: PublicSnapshot;
@@ -682,6 +683,8 @@ export function PublicStall({
   holds: HeldOrder[];
   stampCard: StampCardInfo | null;
   vapidKey: string | null;
+  /** Accounts on and signed in: the chat can reserve without asking to sign in. */
+  signedIn?: boolean;
   t: Dictionary;
 }) {
   const [snap, setSnap] =
@@ -1411,7 +1414,7 @@ export function PublicStall({
   // ========================================
 
   const chatSection = (
-    <section className="min-w-0 space-y-6 sm:space-y-8">
+    <section id="chat" className="min-w-0 scroll-mt-4 space-y-6 sm:space-y-8">
       <div>
         <p className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-brand">
           {es
@@ -1439,6 +1442,7 @@ export function PublicStall({
           currency={snap.currency}
           timezone={timezone}
           isOpen={snap.isOpen}
+          signedIn={signedIn}
           t={t}
         />
       </div>

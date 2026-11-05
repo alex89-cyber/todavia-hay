@@ -60,6 +60,8 @@ export type Reservation = {
   /** Avisos ya enviados, para no repetirlos. */
   confirmAskedAt: string | null;
   prepAlertedAt: string | null;
+  /** La cuenta que apartó (con cuentas activadas). */
+  customerId: string | null;
 };
 
 export const HIDDEN_CODE = "****";

@@ -60,7 +60,7 @@ export type RedeemResult =
 export type PickupPatch = Partial<
   Pick<
     import("../stall").Reservation,
-    "pickupMode" | "pickupAt" | "confirmedAt" | "readyAt" | "noShow" | "confirmAskedAt" | "prepAlertedAt"
+    "pickupMode" | "pickupAt" | "confirmedAt" | "readyAt" | "noShow" | "confirmAskedAt" | "prepAlertedAt" | "customerId"
   >
 >;
 

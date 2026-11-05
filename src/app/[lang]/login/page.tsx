@@ -1,4 +1,5 @@
 
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import {
   getDictionary,
@@ -6,11 +7,18 @@ import {
 } from "@/dictionaries";
 
 import { OwnerLogin } from "@/components/OwnerLogin";
+import { AuthPage } from "@/components/AuthPage";
+import { authEnabled } from "@/lib/auth/config";
 
-export default async function LoginPage({
-  params,
-}: PageProps<"/[lang]/login">) {
-  const { lang } = await params;
+export default async function LoginPage(props: PageProps<"/[lang]/login">) {
+  // With accounts: email, password or Google. Without (local demo): the owner PIN.
+  if (authEnabled())
+    return (
+      <Suspense>
+        <AuthPage {...props} mode="login" />
+      </Suspense>
+    );
+  const { lang } = await props.params;
 
   if (!hasLocale(lang)) {
     notFound();

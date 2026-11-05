@@ -724,6 +724,7 @@ export const memoryStore: StallStore = {
       noShow: false,
       confirmAskedAt: null,
       prepAlertedAt: null,
+      customerId: null,
       orderNumber: nextOrderNumber(s.reservations, s.openedAt),
       lines,
 

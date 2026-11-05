@@ -68,7 +68,7 @@ export async function POST(
 ) {
   // La subida requiere la misma sesión de dueño
   // que el resto del panel.
-  if (!(await isOwner())) {
+  if (!(await isOwner((await ctx.params).slug))) {
     return unauthorized();
   }
 

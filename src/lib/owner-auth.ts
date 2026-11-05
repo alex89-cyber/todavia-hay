@@ -1,6 +1,9 @@
 import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
+import { authEnabled } from "./auth/config";
+import { currentAccount } from "./auth/server";
+import { isMember, memberships } from "./accounts";
 
 // The owner panel, the cash-up and every owner action sit behind a PIN set in
 // OWNER_PIN. Entering it once leaves a signed, httpOnly cookie on that device.
@@ -25,8 +28,17 @@ export function pinMatches(candidate: string) {
   return ownerPinRequired() && same(candidate.trim(), pin());
 }
 
-/** For pages and route handlers: is this request from the owner? */
-export async function isOwner() {
+/**
+ * For pages and route handlers: may this request manage the business?
+ * With accounts: a signed-in member of that business (or of any, without a
+ * slug). Without accounts (local demo): the OWNER_PIN cookie.
+ */
+export async function isOwner(slug?: string) {
+  if (authEnabled()) {
+    const me = await currentAccount();
+    if (!me) return false;
+    return slug ? isMember(slug, me.id) : (await memberships(me.id)).length > 0;
+  }
   if (!ownerPinRequired()) return true;
   const c = (await cookies()).get(OWNER_COOKIE)?.value;
   return Boolean(c && same(c, token()));

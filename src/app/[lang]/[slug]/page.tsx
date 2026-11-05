@@ -10,6 +10,9 @@ import { vapidPublicKey } from "@/lib/push";
 import { HOLDS_COOKIE, PAYER_COOKIE, publicSnapshot, type StallState } from "@/lib/stall";
 import { loadStall } from "@/lib/reservations";
 import { store } from "@/lib/store";
+import { currentAccount } from "@/lib/auth/server";
+import { authEnabled } from "@/lib/auth/config";
+import { accountCard } from "@/lib/accounts";
 
 export default function StallPage({ params, searchParams }: PageProps<"/[lang]/[slug]">) {
   return (
@@ -36,7 +39,8 @@ async function Stall({
   const t = await getDictionary(lang);
   const jar = await cookies();
   const confirmation = await confirmationFor(state, lang, (await searchParams).apartado);
-  const holds = heldOrders(state, lang, jar.get(HOLDS_COOKIE)?.value);
+  const me = await currentAccount();
+  const holds = heldOrders(state, lang, jar.get(HOLDS_COOKIE)?.value, me?.id ?? null);
   // Right after paying, the cookie may not be in this request yet.
   if (confirmation?.kind === "reserved" && !holds.some((h) => h.id === confirmation.id)) {
     const { kind, name, ...hold } = confirmation;
@@ -44,10 +48,15 @@ async function Stall({
     void name;
     holds.unshift(hold);
   }
-  const stampCard = await stampCardFor(state, lang, jar.get(PAYER_COOKIE)?.value);
+  const stampCard = await stampCardFor(state, lang, me ? accountCard(me.id) : jar.get(PAYER_COOKIE)?.value);
   return (
     <>
-      <nav className="mb-4 flex justify-end text-sm">
+      <nav className="mb-4 flex justify-end gap-4 text-sm">
+        {authEnabled() && (
+          <Link className="font-semibold text-brand underline" href={me ? `/${lang}/cuenta` : `/${lang}/login?next=${encodeURIComponent(`/${lang}/${slug}`)}`}>
+            {me ? (lang === "es" ? "Mi cuenta" : "My account") : lang === "es" ? "Entrar" : "Sign in"}
+          </Link>
+        )}
         <Link className="text-muted underline" href={`/${lang === "es" ? "en" : "es"}/${slug}`}>
           {t.switchLang}
         </Link>
@@ -60,6 +69,7 @@ async function Stall({
         holds={holds}
         stampCard={stampCard}
         vapidKey={vapidPublicKey()}
+        signedIn={!!me}
         t={t}
       />
     </>

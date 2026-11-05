@@ -20,6 +20,8 @@ import {
 } from "@/lib/reservations";
 
 import { store } from "@/lib/store";
+import { authEnabled } from "@/lib/auth/config";
+import { cardForPhone } from "@/lib/accounts";
 
 import {
   demoMode,
@@ -53,7 +55,7 @@ export async function GET(
 
   if (
     view === "owner" &&
-    !(await isOwner())
+    !(await isOwner(slug))
   ) {
     return unauthorized();
   }
@@ -592,7 +594,7 @@ export async function POST(
   const { slug } = await ctx.params;
 
   // Verificar sesión del dueño
-  if (!(await isOwner())) {
+  if (!(await isOwner(slug))) {
     return unauthorized();
   }
 
@@ -650,9 +652,14 @@ export async function POST(
     // ======================================
 
     case "sale": {
-      const card = a.customerPhone
+      const phoneCard = a.customerPhone
         ? phoneCardId(a.customerPhone)
         : null;
+      // A phone someone registered stamps their account's card.
+      const card =
+        phoneCard && authEnabled()
+          ? await cardForPhone(phoneCard)
+          : phoneCard;
 
       if (a.customerPhone && !card) {
         return Response.json(
@@ -723,11 +730,14 @@ export async function POST(
     // ======================================
 
     case "stamp": {
+      const byPhone = a.phone
+        ? phoneCardId(a.phone)
+        : null;
       const card =
         a.cardId ??
-        (a.phone
-          ? phoneCardId(a.phone)
-          : null);
+        (byPhone && authEnabled()
+          ? await cardForPhone(byPhone)
+          : byPhone);
 
       if (!card) {
         return Response.json(

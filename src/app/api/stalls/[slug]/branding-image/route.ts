@@ -72,7 +72,7 @@ export async function POST(
   ctx: RouteContext<"/api/stalls/[slug]/branding-image">,
 ) {
   // Solo el propietario puede subir imágenes.
-  if (!(await isOwner())) {
+  if (!(await isOwner((await ctx.params).slug))) {
     return unauthorized();
   }
 

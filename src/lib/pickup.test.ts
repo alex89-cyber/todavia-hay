@@ -60,6 +60,7 @@ function res(over: Partial<Reservation>): Reservation {
     noShow: false,
     confirmAskedAt: null,
     prepAlertedAt: null,
+    customerId: null,
     ...over,
   };
 }

@@ -75,7 +75,7 @@ export async function GET(
 ) {
   await connection();
 
-  if (!(await isOwner())) {
+  if (!(await isOwner((await context.params).slug))) {
     return failure("unauthorized", 401);
   }
 
@@ -118,7 +118,7 @@ export async function POST(
   _request: Request,
   context: Context,
 ) {
-  if (!(await isOwner())) {
+  if (!(await isOwner((await context.params).slug))) {
     return failure("unauthorized", 401);
   }
 

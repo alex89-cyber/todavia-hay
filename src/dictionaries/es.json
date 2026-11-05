@@ -69,6 +69,9 @@
     "pickupAsapMsg": "Para ahorita",
     "pickupTimeMsg": "Para las {time}",
     "pickupMore": "Más horas",
+    "chatLogin": "Entrar o crear cuenta para apartar",
+    "chatLoginWhy": "Para apartar necesitas una cuenta gratis. Al volver, seguimos aquí mismo.",
+    "chatSignedIn": "¡Listo, ya entraste! Dime si confirmamos tu apartado.",
     "pickupNone": "Ya no hay horas libres hoy.",
     "pickupOpensAt": "Abrimos {when}."
   },

@@ -43,7 +43,15 @@ export function mergeLines(lines: OrderLine[]): OrderLine[] {
 
 export async function startReservation(
   state: StallState,
-  input: { customerName: string; lines: OrderLine[]; origin: string; lang: "es" | "en"; pickup: ResolvedPickup },
+  input: {
+    customerName: string;
+    lines: OrderLine[];
+    origin: string;
+    lang: "es" | "en";
+    pickup: ResolvedPickup;
+    /** The signed-in account reserving; its card gets the stamp. */
+    customerId?: string | null;
+  },
 ): Promise<StartResult> {
   const lines = mergeLines(input.lines);
   let res;
@@ -51,8 +59,9 @@ export async function startReservation(
     res = await store.reserve(state.slug, input.customerName, lines, input.pickup.pickupBy);
     if (res.ok) {
       const pickupAt = input.pickup.pickupAt.toISOString();
-      await store.updatePickup(state.slug, res.reservation.id, { pickupMode: input.pickup.mode, pickupAt });
-      res.reservation = { ...res.reservation, pickupMode: input.pickup.mode, pickupAt };
+      const customerId = input.customerId ?? null;
+      await store.updatePickup(state.slug, res.reservation.id, { pickupMode: input.pickup.mode, pickupAt, customerId });
+      res.reservation = { ...res.reservation, pickupMode: input.pickup.mode, pickupAt, customerId };
     }
   } catch (e) {
     console.error("reservation: store failed", e);
@@ -89,7 +98,8 @@ export async function confirmApproval(slug: string, id: string, orderId: string)
   if (!r || r.paypalOrderId !== orderId) return null;
   if (r.status !== "held") return r;
   const auth = await authorizeOrder(orderId);
-  await store.markAuthorized(slug, id, auth.authorizationId, auth.payerId);
+  // With an account the stamp goes to the account's card, not the PayPal payer.
+  await store.markAuthorized(slug, id, auth.authorizationId, r.customerId ? `user:${r.customerId}` : auth.payerId);
   // "Para ahorita" goes straight to the kitchen.
   const s = await store.get(slug);
   if (s) await advance(s).catch((e) => console.error("pickup: advance failed", e));

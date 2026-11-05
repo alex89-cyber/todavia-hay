@@ -102,6 +102,7 @@ type ReservationRow = {
   no_show?: boolean;
   confirm_asked_at?: string | null;
   prep_alerted_at?: string | null;
+  customer_id?: string | null;
   reservation_items: {
     dish_id: string;
     qty: number;
@@ -113,6 +114,7 @@ const RESERVATION_COLS_BASE =
 // pickup_code (migration 0008) and order_number (0009) load only once their migration ran.
 // Pickup columns come from migration 0014.
 const RESERVATION_COLS = [
+  `${RESERVATION_COLS_BASE}, pickup_code, order_number, pickup_mode, pickup_at, confirmed_at, ready_at, no_show, confirm_asked_at, prep_alerted_at, customer_id`,
   `${RESERVATION_COLS_BASE}, pickup_code, order_number, pickup_mode, pickup_at, confirmed_at, ready_at, no_show, confirm_asked_at, prep_alerted_at`,
   `${RESERVATION_COLS_BASE}, pickup_code, order_number`,
   `${RESERVATION_COLS_BASE}, pickup_code`,
@@ -124,7 +126,7 @@ async function withPickupCode<R extends { error: { message: string } | null }>(
 ): Promise<R> {
   let result = await query(RESERVATION_COLS[0]);
   for (const cols of RESERVATION_COLS.slice(1)) {
-    if (!/pickup_code|order_number|pickup_mode|pickup_at|confirmed_at|ready_at|no_show|confirm_asked_at|prep_alerted_at/.test(result.error?.message ?? "")) break;
+    if (!/pickup_code|order_number|pickup_mode|pickup_at|confirmed_at|ready_at|no_show|confirm_asked_at|prep_alerted_at|customer_id/.test(result.error?.message ?? "")) break;
     result = await query(cols);
   }
   return result;
@@ -152,6 +154,7 @@ const toReservation = (
   noShow: r.no_show ?? false,
   confirmAskedAt: r.confirm_asked_at ?? null,
   prepAlertedAt: r.prep_alerted_at ?? null,
+  customerId: r.customer_id ?? null,
   lines: r.reservation_items.map((line) => ({
     dishId: line.dish_id,
     qty: line.qty,
@@ -1194,6 +1197,7 @@ export const supabaseStore: StallStore = {
     if (patch.noShow !== undefined) cols.no_show = patch.noShow;
     if (patch.confirmAskedAt !== undefined) cols.confirm_asked_at = patch.confirmAskedAt;
     if (patch.prepAlertedAt !== undefined) cols.prep_alerted_at = patch.prepAlertedAt;
+    if (patch.customerId !== undefined) cols.customer_id = patch.customerId;
     if (!Object.keys(cols).length) return;
     check(
       await db().from("reservations").update(cols).eq("id", id).eq("business_id", business.id),

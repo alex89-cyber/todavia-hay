@@ -33,7 +33,7 @@ async function Panel({ params }: { params: PanelRouteProps["params"] }) {
   const state = await loadStall(slug);
   if (!state) notFound();
   const t = await getDictionary(lang);
-  if (!(await isOwner())) return <OwnerLogin stallName={state.name} t={t} />;
+  if (!(await isOwner(slug))) return <OwnerLogin stallName={state.name} t={t} />;
   return (
     <OwnerPanel
       initial={ownerView(state)}

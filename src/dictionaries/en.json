@@ -69,6 +69,9 @@
     "pickupAsapMsg": "For right now",
     "pickupTimeMsg": "At {time}",
     "pickupMore": "More times",
+    "chatLogin": "Sign in or create an account to reserve",
+    "chatLoginWhy": "Reserving needs a free account. When you come back, we pick up right here.",
+    "chatSignedIn": "You're signed in! Tell me if we should confirm your order.",
     "pickupNone": "No free times left today.",
     "pickupOpensAt": "We open {when}."
   },

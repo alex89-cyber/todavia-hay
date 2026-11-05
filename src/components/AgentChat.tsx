@@ -5,7 +5,17 @@ import type { Dictionary } from "@/dictionaries";
 import type { AgentReservation, ChatMessage, PickupChoices } from "@/lib/agent";
 import { clock, fill, money } from "@/lib/format";
 
-type Turn = ChatMessage & { reservation?: AgentReservation; pickupChoices?: PickupChoices; error?: boolean };
+type Turn = ChatMessage & {
+  reservation?: AgentReservation;
+  pickupChoices?: PickupChoices;
+  needsLogin?: boolean;
+  error?: boolean;
+  /** Shown only here, never sent to the agent. */
+  local?: boolean;
+};
+
+// The chat is kept while the customer goes to sign in, and picked up on return.
+const saved = (slug: string) => `th_chat:${slug}`;
 
 /** "15:30" → "3:30 p. m." for the button label. */
 function label(hhmm: string, lang: "es" | "en") {
@@ -25,6 +35,7 @@ export function AgentChat({
   currency,
   timezone,
   isOpen,
+  signedIn = false,
   t,
 }: {
   slug: string;
@@ -32,6 +43,7 @@ export function AgentChat({
   currency: string;
   timezone: string;
   isOpen: boolean;
+  signedIn?: boolean;
   t: Dictionary;
 }) {
   const p = t.public;
@@ -40,6 +52,30 @@ export function AgentChat({
   const [busy, setBusy] = useState(false);
   const end = useRef<HTMLDivElement>(null);
   const [allTimes, setAllTimes] = useState(false);
+
+  // Back from signing in: restore the conversation so they can finish reserving.
+  useEffect(() => {
+    let back: Turn[] = [];
+    try {
+      back = JSON.parse(sessionStorage.getItem(saved(slug)) ?? "[]");
+      sessionStorage.removeItem(saved(slug));
+    } catch {}
+    if (!Array.isArray(back) || !back.length) return;
+    const restored = back.map(({ needsLogin, ...m }) => (void needsLogin, m));
+    if (signedIn) restored.push({ role: "assistant", content: p.chatSignedIn, local: true });
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sessionStorage is only readable after mount
+    setTurns(restored);
+    requestAnimationFrame(() => document.getElementById("chat")?.scrollIntoView({ block: "start" }));
+  }, [slug, signedIn, p.chatSignedIn]);
+
+  function goSignIn() {
+    try {
+      sessionStorage.setItem(saved(slug), JSON.stringify(turns.filter((m) => !m.error)));
+    } catch {}
+    const here = `${window.location.pathname}#chat`;
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- full load so the session cookie is read
+    window.location.href = `/${lang}/login?next=${encodeURIComponent(here)}`;
+  }
 
   useEffect(() => {
     if (turns.length) end.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -59,7 +95,7 @@ export function AgentChat({
         signal: AbortSignal.timeout(60_000),
         body: JSON.stringify({
           lang,
-          messages: next.filter((m) => !m.error).map(({ role, content }) => ({ role, content })),
+          messages: next.filter((m) => !m.error && !m.local).map(({ role, content }) => ({ role, content })),
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -69,7 +105,13 @@ export function AgentChat({
       } else {
         setTurns([
           ...next,
-          { role: "assistant", content: json.reply, reservation: json.reservation, pickupChoices: json.pickupChoices },
+          {
+            role: "assistant",
+            content: json.reply,
+            reservation: json.reservation,
+            pickupChoices: json.pickupChoices,
+            needsLogin: json.needsLogin,
+          },
         ]);
       }
     } catch {
@@ -119,6 +161,17 @@ export function AgentChat({
                   >
                     {p.payWithPayPal}
                   </a>
+                </div>
+              )}
+              {m.needsLogin && !signedIn && (
+                <div className="w-full max-w-[85%] rounded-2xl border border-line p-3">
+                  <p className="text-sm">{p.chatLoginWhy}</p>
+                  <button
+                    onClick={goSignIn}
+                    className="mt-2 block w-full rounded-full bg-brand py-3 text-center font-bold text-white active:scale-[0.98]"
+                  >
+                    {p.chatLogin}
+                  </button>
                 </div>
               )}
               {m.pickupChoices && i === turns.length - 1 && !busy && (
