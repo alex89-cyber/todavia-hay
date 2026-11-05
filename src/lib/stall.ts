@@ -46,6 +46,20 @@ export type Reservation = {
 
   /** Número de pedido público. */
   orderNumber: number | null;
+
+  /** "asap" = para ahorita; "scheduled" = para una hora elegida. */
+  pickupMode: "asap" | "scheduled";
+  /** Hora elegida (programado) o estimada de listo (ahorita). */
+  pickupAt: string | null;
+  /** El cliente confirmó que sí va (programados con más de 1 hora). */
+  confirmedAt: string | null;
+  /** El negocio lo marcó "Listo". */
+  readyAt: string | null;
+  /** Se cobró porque nadie lo recogió. */
+  noShow: boolean;
+  /** Avisos ya enviados, para no repetirlos. */
+  confirmAskedAt: string | null;
+  prepAlertedAt: string | null;
 };
 
 export const HIDDEN_CODE = "****";
@@ -209,6 +223,20 @@ export type StallTheme = {
   coverPosition?: StallCoverPosition;
 };
 
+/** Reglas de "Recoger" que pone cada negocio. */
+export type PickupSettings = {
+  /** "Para ahorita": listo en aprox. estos minutos. */
+  asapMinutes: number;
+  /** Aviso al negocio: minutos antes de la hora elegida. También es la anticipación mínima. */
+  noticeMinutes: number;
+  /** Cada cuánto hay horarios. */
+  slotMinutes: number;
+  /** Máximo de pedidos por horario; null = sin límite. */
+  maxPerSlot: number | null;
+  /** Minutos de espera después de la hora antes de cobrar. */
+  toleranceMinutes: number;
+};
+
 export type StallOpeningHour = {
   day: number;
   enabled: boolean;
@@ -282,6 +310,10 @@ export type StallSettings = {
   // HORARIOS
 
   openingHours?: StallOpeningHour[];
+
+  // RECOGER
+
+  pickup?: PickupSettings;
 
   // APARIENCIA
 

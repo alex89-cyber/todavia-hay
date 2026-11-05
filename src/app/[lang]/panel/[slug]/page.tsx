@@ -7,6 +7,7 @@ import { getDictionary, hasLocale } from "@/dictionaries";
 import { ownerView } from "@/lib/stall";
 import { demoMode, isOwner, ownerPinRequired } from "@/lib/owner-auth";
 import { loadStall } from "@/lib/reservations";
+import { vapidPublicKey } from "@/lib/push";
 
 type PanelRouteProps = {
   params: Promise<{
@@ -41,6 +42,7 @@ async function Panel({ params }: { params: PanelRouteProps["params"] }) {
       t={t}
       demo={demoMode()}
       canSignOut={ownerPinRequired()}
+      vapidKey={vapidPublicKey()}
     />
   );
 }

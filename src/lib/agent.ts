@@ -7,6 +7,7 @@ import { startReservation } from "./reservations";
 import { replyLanguage } from "./language";
 import { offlineReply } from "./offline-reply";
 import type { StallState } from "./stall";
+import { hhmm, pickupOptions, pickupSettings, resolvePickup, type PickupOptions } from "./pickup";
 
 // The "¿Todavía hay?" agent on the public page. It answers from the live menu
 // and, once the customer confirms, reserves through PayPal: the money is held
@@ -19,10 +20,48 @@ export type AgentReservation = {
   approveUrl: string;
   totalCents: number;
   pickupBy: string;
+  pickupMode: "asap" | "scheduled";
+  pickupAt: string | null;
   lines: { name: string; qty: number }[];
 };
 
-export type AgentReply = { reply: string; reservation?: AgentReservation; offline?: boolean };
+/** Buttons under the reply: "Para ahorita" and today's free times. */
+export type PickupChoices = {
+  asap: { available: boolean; minutes: number };
+  /** "15:30", in the stall's time zone. */
+  times: string[];
+  opensAt: string | null;
+};
+
+export type AgentReply = { reply: string; reservation?: AgentReservation; pickupChoices?: PickupChoices; offline?: boolean };
+
+function choicesFrom(s: StallState, o: PickupOptions): PickupChoices {
+  return {
+    asap: { available: o.asap.available, minutes: pickupSettings(s).asapMinutes },
+    times: o.slots.map((d) => hhmm(d, s.timezone)),
+    opensAt: o.opensAt?.toISOString() ?? null,
+  };
+}
+
+function pickupRules(s: StallState, lang: "es" | "en") {
+  const p = pickupSettings(s);
+  const o = pickupOptions(s);
+  const asap = o.asap.available
+    ? `available, ready in about ${p.asapMinutes} minutes`
+    : o.asap.reason === "closing"
+      ? "NOT available: it would be ready after closing time"
+      : "NOT available: the stall is closed";
+  const times = o.slots.length
+    ? o.slots.map((d) => clock(d, s, lang)).join(", ")
+    : "none left today";
+  const opens = o.opensAt ? ` The stall opens next at ${clock(o.opensAt, s, lang)} (${o.opensAt.toISOString().slice(0, 10)}).` : "";
+  return `Pickup (ask before summarizing the order):
+- Ask "¿Para ahorita o para una hora?" / "For right now or for a set time?" and call offer_pickup_times in the same turn so the customer gets buttons.
+- "Para ahorita": ${asap}.
+- "Para una hora": today only, no other day. Free times right now: ${times}. Never accept a time outside this list; if they ask for one, offer the nearest free ones.${opens}
+- If they confirm more than an hour ahead, tell them they will get a notice to confirm they are still coming before the stall starts cooking; if they don't confirm, it is cancelled at no cost.
+- Wait time: the stall holds the order ${p.toleranceMinutes} minutes after the pickup time. If nobody picks it up, it IS charged. Always say this in the summary before they confirm.`;
+}
 
 // GOOGLE_GENERATIVE_AI_BASE_URL only points local tests at a fake Gemini.
 const google = createGoogleGenerativeAI({ baseURL: process.env.GOOGLE_GENERATIVE_AI_BASE_URL || undefined });
@@ -62,8 +101,9 @@ ${menu}
 Rules:
 - Answer only from the live state above. Never invent dishes, prices or availability. Portion counts are estimates: say "unos 12" / "about 12", never promise an exact number.
 - If the stall is closed or a dish is sold out, say so plainly and suggest what is still available. They can also tap "Avísame" on the page to get a phone alert when it opens or the dish comes back.
-- Reserving needs from the customer: the order (dishes and quantities, max 10 per dish) and their first name and one last name, which the stall asks for at pickup if they lose their code. If they have not written both names in this chat, ask for what is missing before summarizing; never guess or invent a name. Before reserving, summarize the order with its total and tell them they must pick it up within ${s.holdMinutes} minutes. Ask them to confirm. Only call reserve_order after they clearly say yes.
-- How payment works, if they ask or when you summarize: PayPal holds the money now and the stall only charges it when they pick up. If they do not arrive in time, the hold is released and nothing is charged. They can pay with a PayPal account or a card.
+- Reserving needs from the customer: the order (dishes and quantities, max 10 per dish) and their first name and one last name, which the stall asks for at pickup if they lose their code. If they have not written both names in this chat, ask for what is missing before summarizing; never guess or invent a name. Before reserving, summarize the order with its total and the pickup time, and ask them to confirm. Only call reserve_order after they clearly say yes.
+- How payment works, if they ask or when you summarize: PayPal holds the money now and the stall charges it at pickup. If they don't come, it is charged anyway (unless an order scheduled hours ahead was never confirmed, which is cancelled for free). They can pay with a PayPal account or a card.
+${pickupRules(s, lang)}
 - After reserve_order succeeds, tell them to tap the PayPal button that appears below your message to finish, and that once they pay they get a 4-digit pickup code to say at the counter. Never write links or URLs.
 - If reserve_order fails, explain why in one sentence and offer an alternative.
 - Language: reply in ${lang === "es" ? "Mexican Spanish" : "English"}, because that is the language of the customer's last message. If they switch language, switch with them. Use dish names in that language. Be warm and brief: one to three short sentences, no markdown, at most one emoji.
@@ -97,6 +137,19 @@ export async function chat(
   const ctx = { ...page, lang: replyLanguage(messages, page.lang) };
   const ids = s.dishes.map((d) => d.id) as [string, ...string[]];
   let reservation: AgentReservation | undefined;
+  let pickupChoices: PickupChoices | undefined;
+
+  const offerPickupTimes = tool({
+    description: "Shows the customer buttons to pick up right now or at a free time today. Call it whenever you ask when they want to pick up.",
+    inputSchema: z.object({}),
+    execute: async () => {
+      pickupChoices = choicesFrom(s, pickupOptions(s));
+      return {
+        asap: pickupChoices.asap.available ? `available, about ${pickupChoices.asap.minutes} min` : "not available",
+        times: pickupChoices.times.length ? pickupChoices.times : "none left today",
+      };
+    },
+  });
 
   const reserveOrder = tool({
     description:
@@ -107,16 +160,38 @@ export async function chat(
         .array(z.object({ dishId: z.enum(ids), qty: z.number().int().min(1).max(10) }))
         .min(1)
         .max(8),
+      pickupMode: z.enum(["asap", "scheduled"]).describe('"asap" for right now, "scheduled" for a time today'),
+      pickupTime: z
+        .string()
+        .regex(/^([01]?\d|2[0-3]):[0-5]\d$/)
+        .optional()
+        .describe('24-hour local time like "15:30", required when scheduled'),
     }),
-    execute: async ({ customerName, items }) => {
+    execute: async ({ customerName, items, pickupMode, pickupTime }) => {
       if (reservation) return { ok: false, error: "A reservation was already created in this message." };
       if (!nameGiven(customerName, messages))
         return { ok: false, error: "The customer has not told you their first name and last name. Ask for what is missing, then summarize and confirm again." };
+      if (pickupMode === "scheduled" && !pickupTime)
+        return { ok: false, error: "Ask the customer what time today they want to pick it up." };
+      const picked = resolvePickup(s, pickupMode === "asap" ? { mode: "asap" } : { mode: "scheduled", time: pickupTime! });
+      if (!picked.ok) {
+        pickupChoices = choicesFrom(s, picked.options);
+        const why = {
+          closed: "The stall is closed now.",
+          closing: "It would be ready after closing time.",
+          bad_time: "That is not a valid time.",
+          too_soon: "That time is too soon for the stall to prepare it.",
+          outside_hours: "That time is outside today's opening hours.",
+          full: "That time is already full.",
+        }[picked.reason];
+        return { ok: false, error: `${why} Offer the free times: ${pickupChoices.times.join(", ") || "none today"}.` };
+      }
       const res = await startReservation(s, {
         customerName,
         lines: items.map((i) => ({ dishId: i.dishId, qty: i.qty })),
         origin: ctx.origin,
         lang: ctx.lang,
+        pickup: picked.pickup,
       });
       if (!res.ok) {
         const why = {
@@ -133,12 +208,15 @@ export async function chat(
         approveUrl: res.approveUrl,
         totalCents: res.reservation.totalCents,
         pickupBy: res.reservation.pickupBy,
+        pickupMode: res.reservation.pickupMode,
+        pickupAt: res.reservation.pickupAt,
         lines: res.reservation.lines.map((l) => ({ name: name.get(l.dishId) ?? l.dishId, qty: l.qty })),
       };
       return {
         ok: true,
         total: `$${(reservation.totalCents / 100).toFixed(2)} ${s.currency}`,
-        pickUpBefore: clock(reservation.pickupBy, s, ctx.lang),
+        pickup: reservation.pickupMode === "asap" ? `right now, ready about ${clock(reservation.pickupAt!, s, ctx.lang)}` : `at ${clock(reservation.pickupAt!, s, ctx.lang)}`,
+        chargedIfNotPickedUpAfter: clock(reservation.pickupBy, s, ctx.lang),
         next: "The customer must tap the PayPal button shown under your reply to confirm.",
       };
     },
@@ -150,7 +228,7 @@ export async function chat(
       model: google(modelId),
       instructions: instructions(s, ctx.lang),
       messages,
-      tools: s.isOpen ? { reserve_order: reserveOrder } : {},
+      tools: s.isOpen ? { reserve_order: reserveOrder, offer_pickup_times: offerPickupTimes } : {},
       stopWhen: isStepCount(3),
       temperature: 0.3,
       // Some Gemini models count thinking against this, so keep room.
@@ -182,7 +260,12 @@ export async function chat(
   console.log(`agent: ${result.steps.length} step(s) in ${Date.now() - started} ms`);
 
   const reply = result.text.trim();
-  return { reply: reply || (ctx.lang === "es" ? "¿Me lo repites, por favor?" : "Could you say that again?"), reservation };
+  return {
+    reply: reply || (ctx.lang === "es" ? "¿Me lo repites, por favor?" : "Could you say that again?"),
+    reservation,
+    // A finished reservation needs no more time buttons.
+    pickupChoices: reservation ? undefined : pickupChoices,
+  };
 }
 
 function describe(e: unknown): string {

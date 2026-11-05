@@ -27,6 +27,7 @@ import {
 import type {
   StallStore,
   Watch,
+  PushTarget,
 } from "./types";
 
 // In-process store for the demo and for running without Supabase.
@@ -128,6 +129,7 @@ const g = globalThis as unknown as {
     StampCard & { slug: string }
   >;
   __watches?: Map<string, Watch[]>;
+  __pushes?: Map<string, PushTarget[]>;
 };
 
 const stalls = (
@@ -151,6 +153,8 @@ const watches = (
     Watch[]
   >()
 );
+
+const pushes = (g.__pushes ??= new Map<string, PushTarget[]>());
 
 const cardKey = (
   slug: string,
@@ -713,6 +717,13 @@ export const memoryStore: StallStore = {
       id: crypto.randomUUID(),
       customerName,
       pickupCode: newPickupCode(s.reservations),
+      pickupMode: "asap",
+      pickupAt: null,
+      confirmedAt: null,
+      readyAt: null,
+      noShow: false,
+      confirmAskedAt: null,
+      prepAlertedAt: null,
       orderNumber: nextOrderNumber(s.reservations, s.openedAt),
       lines,
 
@@ -1059,5 +1070,33 @@ export const memoryStore: StallStore = {
     return list.filter(
       due,
     );
+  },
+
+  /* =======================================
+     RECOGER
+     ======================================= */
+
+  async updatePickup(slug, id, patch) {
+    const s = must(slug);
+    const r = reservation(s, id);
+    if (!r) return;
+    Object.assign(r, patch);
+    save(s);
+  },
+
+  async savePush(slug, target) {
+    must(slug);
+    const list = (pushes.get(slug) ?? []).filter(
+      (p) => !(p.endpoint === target.endpoint && p.reservationId === target.reservationId),
+    );
+    pushes.set(slug, [...list, { ...target }]);
+  },
+
+  async pushTargets(slug, reservationId) {
+    return (pushes.get(slug) ?? []).filter((p) => p.reservationId === reservationId).map((p) => ({ ...p }));
+  },
+
+  async dropPush(slug, endpoint) {
+    pushes.set(slug, (pushes.get(slug) ?? []).filter((p) => p.endpoint !== endpoint));
   },
 };

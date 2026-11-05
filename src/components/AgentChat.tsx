@@ -2,10 +2,20 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Dictionary } from "@/dictionaries";
-import type { AgentReservation, ChatMessage } from "@/lib/agent";
+import type { AgentReservation, ChatMessage, PickupChoices } from "@/lib/agent";
 import { clock, fill, money } from "@/lib/format";
 
-type Turn = ChatMessage & { reservation?: AgentReservation; error?: boolean };
+type Turn = ChatMessage & { reservation?: AgentReservation; pickupChoices?: PickupChoices; error?: boolean };
+
+/** "15:30" → "3:30 p. m." for the button label. */
+function label(hhmm: string, lang: "es" | "en") {
+  const [h, m] = hhmm.split(":").map(Number);
+  return new Intl.DateTimeFormat(lang === "es" ? "es-MX" : "en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(
+    new Date(Date.UTC(2000, 0, 1, h, m)),
+  );
+}
+
+const FIRST_TIMES = 8;
 
 // The "¿todavía hay?" chat. The conversation lives here; each send posts the
 // last turns to the agent, which answers from the live menu and can reserve.
@@ -29,6 +39,7 @@ export function AgentChat({
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const end = useRef<HTMLDivElement>(null);
+  const [allTimes, setAllTimes] = useState(false);
 
   useEffect(() => {
     if (turns.length) end.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -56,7 +67,10 @@ export function AgentChat({
         const reply = json.error === "agent_unavailable" ? p.agentOff : p.agentError;
         setTurns([...next, { role: "assistant", content: reply, error: true }]);
       } else {
-        setTurns([...next, { role: "assistant", content: json.reply, reservation: json.reservation }]);
+        setTurns([
+          ...next,
+          { role: "assistant", content: json.reply, reservation: json.reservation, pickupChoices: json.pickupChoices },
+        ]);
       }
     } catch {
       setTurns([...next, { role: "assistant", content: p.agentError, error: true }]);
@@ -90,18 +104,62 @@ export function AgentChat({
               {m.reservation && (
                 <div className="w-full max-w-[85%] rounded-2xl border border-line p-3">
                   <p className="text-sm">
-                    {fill(p.reservedSummary, {
+                    {fill(p.reservedSummaryAt, {
                       items: m.reservation.lines.map((l) => `${l.qty} × ${l.name}`).join(", "),
                       total: money(m.reservation.totalCents, currency, lang),
-                      time: clock(m.reservation.pickupBy, timezone, lang),
+                      when: fill(m.reservation.pickupMode === "asap" ? p.whenAsap : p.whenAt, {
+                        time: m.reservation.pickupAt ? clock(m.reservation.pickupAt, timezone, lang) : "",
+                      }),
                     })}
                   </p>
+                  <p className="mt-1 text-xs font-semibold text-muted">{p.chargeWarning}</p>
                   <a
                     href={m.reservation.approveUrl}
                     className="mt-2 block rounded-full bg-[#ffc439] py-3 text-center font-bold text-[#003087] active:scale-[0.98]"
                   >
                     {p.payWithPayPal}
                   </a>
+                </div>
+              )}
+              {m.pickupChoices && i === turns.length - 1 && !busy && (
+                <div className="flex w-full max-w-[85%] flex-wrap gap-2">
+                  {m.pickupChoices.asap.available && (
+                    <button
+                      onClick={() => send(p.pickupAsapMsg)}
+                      className="rounded-full bg-brand px-3 py-1.5 text-sm font-semibold text-white active:scale-95"
+                    >
+                      {fill(p.pickupAsapButton, { n: m.pickupChoices.asap.minutes })}
+                    </button>
+                  )}
+                  {(allTimes ? m.pickupChoices.times : m.pickupChoices.times.slice(0, FIRST_TIMES)).map((time) => (
+                    <button
+                      key={time}
+                      onClick={() => send(fill(p.pickupTimeMsg, { time: label(time, lang) }) + ` (${time})`)}
+                      className="rounded-full border border-line px-3 py-1.5 text-sm active:scale-95"
+                    >
+                      {label(time, lang)}
+                    </button>
+                  ))}
+                  {!allTimes && m.pickupChoices.times.length > FIRST_TIMES && (
+                    <button onClick={() => setAllTimes(true)} className="px-2 py-1.5 text-sm text-muted underline">
+                      {p.pickupMore}
+                    </button>
+                  )}
+                  {!m.pickupChoices.asap.available && !m.pickupChoices.times.length && (
+                    <p className="text-sm text-muted">
+                      {p.pickupNone}
+                      {m.pickupChoices.opensAt &&
+                        " " +
+                          fill(p.pickupOpensAt, {
+                            when: new Intl.DateTimeFormat(lang === "es" ? "es-MX" : "en-US", {
+                              weekday: "long",
+                              hour: "numeric",
+                              minute: "2-digit",
+                              timeZone: timezone,
+                            }).format(new Date(m.pickupChoices.opensAt)),
+                          })}
+                    </p>
+                  )}
                 </div>
               )}
             </li>

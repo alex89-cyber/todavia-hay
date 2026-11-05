@@ -56,6 +56,23 @@ export type RedeemResult =
  * stall to open (dishId null) or a dish to
  * become available again.
  */
+/** Pickup times and kitchen progress the server updates after reserving. */
+export type PickupPatch = Partial<
+  Pick<
+    import("../stall").Reservation,
+    "pickupMode" | "pickupAt" | "confirmedAt" | "readyAt" | "noShow" | "confirmAskedAt" | "prepAlertedAt"
+  >
+>;
+
+/** A device to notify: the owner's (reservationId null) or a customer's for one order. */
+export type PushTarget = {
+  reservationId: string | null;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  lang: "es" | "en";
+};
+
 export type Watch = {
   dishId: string | null;
   endpoint: string;
@@ -545,4 +562,31 @@ export interface StallStore {
     open: boolean,
     dishIds: string[],
   ): Promise<Watch[]>;
+
+  // ========================================
+  // RECOGER
+  // ========================================
+
+  updatePickup(
+    slug: string,
+    id: string,
+    patch: PickupPatch,
+  ): Promise<void>;
+
+  /** Saves a device to notify; the same endpoint twice is kept once. */
+  savePush(
+    slug: string,
+    target: PushTarget,
+  ): Promise<void>;
+
+  /** The owner's devices (null) or the customer's devices for one order. */
+  pushTargets(
+    slug: string,
+    reservationId: string | null,
+  ): Promise<PushTarget[]>;
+
+  dropPush(
+    slug: string,
+    endpoint: string,
+  ): Promise<void>;
 }

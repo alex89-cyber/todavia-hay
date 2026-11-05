@@ -14,6 +14,7 @@ import BusinessAppearanceSection from "./BusinessAppearanceSection";
 import BusinessLocationSection from "./BusinessLocationSection";
 import BusinessContactSection from "./BusinessContactSection";
 import BusinessHoursSection from "./BusinessHoursSection";
+import BusinessPickupSection from "./BusinessPickupSection";
 import BusinessSectionsEditor from "./BusinessSectionsEditor";
 import BusinessPreview from "./BusinessPreview";
 import ConfigurationSaveBar from "./ConfigurationSaveBar";
@@ -347,6 +348,15 @@ function BusinessConfigurationContent() {
           {/* HORARIOS */}
 
           <BusinessHoursSection
+            lang={lang}
+            settings={settings}
+            disabled={saving || uploading}
+            onSettingsChange={updateSettings}
+          />
+
+          {/* RECOGER */}
+
+          <BusinessPickupSection
             lang={lang}
             settings={settings}
             disabled={saving || uploading}

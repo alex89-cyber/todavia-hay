@@ -5,11 +5,13 @@ import Image from "next/image";
 import { OwnerOperationsPanel } from "@/components/OwnerOperationsPanel";
 import OwnerRewardPinCard from "@/components/OwnerRewardPinCard";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { Dictionary } from "@/dictionaries";
 import { clock, fill, money, qty } from "@/lib/format";
 import { menuAvailability } from "@/lib/inventory";
+import { kitchenStage, needsConfirmation, pickupSettings, prepStartsAt, type KitchenStage } from "@/lib/pickup";
+import { subscribePush } from "@/lib/client-push";
 
 
 import {
@@ -32,6 +34,7 @@ export function OwnerPanel({
   t,
   demo,
   canSignOut,
+  vapidKey = null,
 }: {
   initial: OwnerView;
   lang: string;
@@ -39,6 +42,7 @@ export function OwnerPanel({
   t: Dictionary;
   demo: boolean;
   canSignOut: boolean;
+  vapidKey?: string | null;
 }) {
   const o = t.owner;
   const es = lang === "es";
@@ -433,6 +437,15 @@ export function OwnerPanel({
         timezone={timezone}
         fmt={fmt}
         busy={busy}
+        vapidKey={vapidKey}
+        onPush={async (subscription) => {
+          const r = await act({ action: "ownerPush", lang, subscription });
+          return Boolean(r && !r.error);
+        }}
+        onReady={async (id) => {
+          const r = await act({ action: "ready", reservationId: id });
+          setToast(r?.error ? { kind: "bad", text: o.paypalError } : { kind: "ok", text: o.readyDone });
+        }}
         onDeliver={async (id, proof) => {
           const r = await act({
             action: "deliver",
@@ -1282,6 +1295,9 @@ function Reservations({
   onDeliver,
   onCancel,
   onRedeem,
+  onReady,
+  onPush,
+  vapidKey,
 }: {
   view: OwnerView;
   t: Dictionary;
@@ -1289,6 +1305,9 @@ function Reservations({
   timezone: string;
   fmt: (c: number) => string;
   busy: boolean;
+  onReady: (id: string) => void;
+  onPush: (subscription: PushSubscriptionJSON) => Promise<boolean>;
+  vapidKey: string | null;
   onDeliver: (
     id: string,
     proof: { code?: string; lastName?: string },
@@ -1303,11 +1322,49 @@ function Reservations({
   // The reservation whose code is being asked for at the counter.
   const [handing, setHanding] = useState<Reservation | null>(null);
 
-  const active = view.reservations.filter(
-    (r) =>
-      r.status === "held" ||
-      r.status === "authorized",
-  );
+  const pickup = pickupSettings(view);
+  const now = new Date();
+  const stageOf = (r: Reservation): KitchenStage | "unpaid" =>
+    r.status === "authorized" ? kitchenStage(r, pickup, now) : "unpaid";
+  const ORDER: (KitchenStage | "unpaid")[] = ["to_prepare", "ready", "awaiting_confirmation", "scheduled", "unpaid"];
+  const active = view.reservations
+    .filter((r) => r.status === "held" || r.status === "authorized")
+    .sort(
+      (a, b) =>
+        ORDER.indexOf(stageOf(a)) - ORDER.indexOf(stageOf(b)) ||
+        (a.pickupAt ?? a.pickupBy).localeCompare(b.pickupAt ?? b.pickupBy),
+    );
+
+  // A beep when an order newly needs preparing (the browser allows sound after the first tap).
+  const toPrepare = active.filter((r) => stageOf(r) === "to_prepare").map((r) => r.id).join(",");
+  const seen = useRef<string | null>(null);
+  useEffect(() => {
+    const ids = toPrepare ? toPrepare.split(",") : [];
+    const before = seen.current === null ? null : new Set(seen.current ? seen.current.split(",") : []);
+    seen.current = toPrepare;
+    if (before && ids.some((id) => !before.has(id))) beep();
+  }, [toPrepare]);
+
+  const [pushState, setPushState] = useState<"idle" | "on" | "denied" | "ios" | "error">("idle");
+  async function enablePush() {
+    if (!vapidKey) return;
+    try {
+      const sub = await subscribePush(vapidKey);
+      if (typeof sub === "string") return setPushState(sub === "unsupported" ? "error" : sub);
+      setPushState((await onPush(sub)) ? "on" : "error");
+    } catch {
+      setPushState("error");
+    }
+  }
+
+  const at = (iso: string | null) => (iso ? clock(iso, timezone, lang) : "");
+  const stageTitle: Record<KitchenStage | "unpaid", string> = {
+    to_prepare: o.stageToPrepare,
+    ready: o.stageReady,
+    awaiting_confirmation: o.stageAwaiting,
+    scheduled: o.stageScheduled,
+    unpaid: o.awaitingPayment,
+  };
 
   const deliver = (r: Reservation) => {
     if (r.pickupCode) setHanding(r);
@@ -1427,6 +1484,24 @@ function Reservations({
         )}
       </h2>
 
+      {vapidKey && (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={enablePush}
+            disabled={pushState === "on"}
+            className={`rounded-full px-4 py-2 text-sm font-semibold active:scale-95 ${
+              pushState === "on" ? "bg-ok-soft text-ok" : "border border-line bg-surface"
+            }`}
+          >
+            {pushState === "on" ? `✓ ${o.pushOwnerOn}` : `🔔 ${o.pushOwner}`}
+          </button>
+          {pushState === "denied" && <span className="text-xs text-muted">{t.public.notifyDenied}</span>}
+          {pushState === "ios" && <span className="text-xs text-muted">{t.public.notifyIos}</span>}
+          {pushState === "error" && <span className="text-xs text-muted">{t.public.notifyError}</span>}
+        </div>
+      )}
+
       {handing && (
         <HandOverDialog
           r={handing}
@@ -1442,10 +1517,15 @@ function Reservations({
         />
       )}
 
-      {active.map((r) => (
+      {active.map((r, i) => (
+        <div key={r.id} className="flex flex-col gap-3">
+        {(i === 0 || stageOf(active[i - 1]) !== stageOf(r)) && (
+          <h3 className="pt-2 text-sm font-extrabold uppercase tracking-wide text-muted">{stageTitle[stageOf(r)]}</h3>
+        )}
         <article
-          key={r.id}
-          className="rounded-2xl border border-[#e9d4c5] bg-surface p-5 shadow-sm sm:p-6"
+          className={`rounded-2xl border bg-surface p-5 shadow-sm sm:p-6 ${
+            stageOf(r) === "to_prepare" ? "border-brand ring-2 ring-brand/30" : "border-[#e9d4c5]"
+          }`}
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
@@ -1476,19 +1556,35 @@ function Reservations({
             }`}
           >
             {r.status === "authorized"
-              ? fill(o.paidHeld, {
-                  time: clock(
-                    r.pickupBy,
-                    timezone,
-                    lang,
-                  ),
-                })
+              ? r.pickupAt
+                ? fill(r.pickupMode === "asap" ? o.whenAsap : o.whenAt, { time: at(r.pickupAt) })
+                : fill(o.paidHeld, { time: at(r.pickupBy) })
               : o.awaitingPayment}
           </p>
 
+          {r.status === "authorized" && needsConfirmation(r) && (
+            <p className="mt-1 text-sm text-muted">
+              {r.confirmedAt ? o.confirmedNote : fill(o.confirmPending, { time: at(prepStartsAt(r, pickup).toISOString()) })}
+            </p>
+          )}
+          {r.status === "authorized" && r.pickupAt && (
+            <p className="mt-1 text-xs text-muted">{fill(o.chargeAt, { time: at(r.pickupBy) })}</p>
+          )}
+
           {stamps(r)}
 
-          <div className="mt-5 grid grid-cols-[1fr_auto] gap-3">
+          {stageOf(r) === "to_prepare" && (
+            <button
+              type="button"
+              onClick={() => onReady(r.id)}
+              disabled={busy}
+              className="mt-5 w-full rounded-xl bg-brand px-5 py-3.5 text-base font-bold text-white active:scale-[0.98] disabled:opacity-40"
+            >
+              {o.markReady}
+            </button>
+          )}
+
+          <div className="mt-3 grid grid-cols-[1fr_auto] gap-3">
             <button
               type="button"
               onClick={() => deliver(r)}
@@ -1513,6 +1609,7 @@ function Reservations({
             </button>
           </div>
         </article>
+        </div>
       ))}
 
       {done.map((r) => (
@@ -1528,11 +1625,7 @@ function Reservations({
             </span>
 
             <span className="shrink-0">
-              {
-                o.reservationStatus[
-                  r.status
-                ]
-              }
+              {r.noShow ? o.noShowStatus : o.reservationStatus[r.status]}
             </span>
           </p>
 
@@ -2050,4 +2143,23 @@ function Customers({
       </ul>
     </section>
   );
+}
+
+/** Short two-tone beep for "Por preparar". Silent if the browser blocks audio. */
+function beep() {
+  try {
+    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    [880, 1320].forEach((f, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = f;
+      gain.gain.value = 0.15;
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(ctx.currentTime + i * 0.2);
+      osc.stop(ctx.currentTime + i * 0.2 + 0.15);
+    });
+    setTimeout(() => ctx.close(), 1000);
+  } catch {}
 }

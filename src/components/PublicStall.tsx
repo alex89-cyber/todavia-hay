@@ -1,5 +1,8 @@
 
 "use client";
+
+import type { HeldOrder } from "@/lib/holds";
+import { HeldOrders } from "./HeldOrders";
 import PublicRewardsSection from "./PublicRewardsSection";
 import Image from "next/image";
 import {
@@ -36,13 +39,7 @@ import {
 // TIPOS EXISTENTES
 // ==========================================
 
-export type HeldOrder = {
-  code: string | null;
-  orderNumber: number | null;
-  items: string;
-  pickupBy: string;
-  totalCents: number;
-};
+export type { HeldOrder };
 
 export type Confirmation =
   | ({
@@ -1735,27 +1732,6 @@ export function PublicStall({
                 )}
               </p>
 
-              {confirmation.orderNumber && (
-                <p className="text-sm font-bold">
-                  {fill(
-                    t.public.orderNumber,
-                    {
-                      n:
-                        confirmation.orderNumber,
-                    },
-                  )}
-                </p>
-              )}
-
-              {confirmation.code && (
-                <PickupCode
-                  code={
-                    confirmation.code
-                  }
-                  t={t}
-                />
-              )}
-
               {stampCard && (
                 <p className="pt-1 text-sm font-semibold">
                   ⭐{" "}
@@ -1777,58 +1753,15 @@ export function PublicStall({
 
       {/* RESERVAS ACTIVAS */}
 
-      {holds.map((hold) => (
-        <div
-          key={
-            hold.code ??
-            hold.pickupBy
-          }
-          role="status"
-          className="space-y-3 rounded-3xl border border-ok/20 bg-ok-soft p-6 text-ok shadow-sm sm:p-8"
-        >
-          <p className="text-lg font-extrabold">
-            {t.public.yourHold}
-
-            {hold.orderNumber
-              ? ` · ${fill(
-                  t.public.orderNumber,
-                  {
-                    n:
-                      hold.orderNumber,
-                  },
-                )}`
-              : ""}
-          </p>
-
-          <p className="text-sm leading-relaxed">
-            {fill(
-              t.public.reservedSummary,
-              {
-                items: hold.items,
-
-                total: money(
-                  hold.totalCents,
-                  snap.currency,
-                  lang,
-                ),
-
-                time: clock(
-                  hold.pickupBy,
-                  timezone,
-                  lang,
-                ),
-              },
-            )}
-          </p>
-
-          {hold.code && (
-            <PickupCode
-              code={hold.code}
-              t={t}
-            />
-          )}
-        </div>
-      ))}
+      <HeldOrders
+        slug={snap.slug}
+        lang={lang}
+        currency={snap.currency}
+        timezone={timezone}
+        vapidKey={vapidKey}
+        initial={holds}
+        t={t}
+      />
 
       {/* ENCABEZADO DEL NEGOCIO */}
 
@@ -2079,29 +2012,5 @@ function StampCard({
         </form>
       )}
     </section>
-  );
-}
-
-// ==========================================
-// CÓDIGO DE ENTREGA
-// ==========================================
-
-function PickupCode({
-  code,
-  t,
-}: {
-  code: string;
-  t: Dictionary;
-}) {
-  return (
-    <div className="flex items-center gap-4 pt-1">
-      <span className="rounded-2xl bg-surface px-4 py-2 font-mono text-3xl font-black tracking-[0.3em] text-foreground">
-        {code}
-      </span>
-
-      <span className="text-sm font-semibold leading-snug">
-        {t.public.pickupCodeHint}
-      </span>
-    </div>
   );
 }

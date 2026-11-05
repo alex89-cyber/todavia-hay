@@ -1,7 +1,7 @@
 import "server-only";
 import webpush from "web-push";
 import { menuAvailability } from "./inventory";
-import type { StallState } from "./stall";
+import { shortName, type Reservation, type StallState } from "./stall";
 import { store } from "./store";
 import type { Watch } from "./store/types";
 
@@ -69,3 +69,79 @@ export async function notifyWaiting(s: StallState): Promise<number> {
   console.log(`push: ${sent}/${due.length} sent for ${s.slug}`);
   return sent;
 }
+
+// ------------------------------------------
+// Recoger: avisos al negocio y al cliente
+// ------------------------------------------
+
+type Push = { title: string; body: string; url: string; tag: string };
+
+async function sendTo(slug: string, reservationId: string | null, build: (lang: "es" | "en") => Push): Promise<number> {
+  if (!pushConfigured()) return 0;
+  const targets = await store.pushTargets(slug, reservationId);
+  let sent = 0;
+  await Promise.all(
+    targets.map(async (t) => {
+      try {
+        await webpush.sendNotification(
+          { endpoint: t.endpoint, keys: { p256dh: t.p256dh, auth: t.auth } },
+          JSON.stringify(build(t.lang)),
+          { TTL: 30 * 60, timeout: 10_000 },
+        );
+        sent++;
+      } catch (e) {
+        const code = (e as { statusCode?: number }).statusCode ?? 0;
+        if ([404, 410].includes(code)) await store.dropPush(slug, t.endpoint).catch(() => {});
+        else console.error("push: send failed", (e as Error).message);
+      }
+    }),
+  );
+  return sent;
+}
+
+const label = (r: Reservation) => `#${r.orderNumber ?? "?"} · ${shortName(r.customerName)}`;
+const time = (iso: string | null, s: StallState, lang: "es" | "en") =>
+  iso
+    ? new Intl.DateTimeFormat(lang === "es" ? "es-MX" : "en-US", { hour: "numeric", minute: "2-digit", timeZone: s.timezone }).format(
+        new Date(iso),
+      )
+    : "";
+
+/** The kitchen should start on this order now. */
+export const alertOwnerToPrepare = (s: StallState, r: Reservation) =>
+  sendTo(s.slug, null, (lang) => ({
+    title: lang === "es" ? `Por preparar: ${label(r)}` : `To prepare: ${label(r)}`,
+    body:
+      r.pickupMode === "scheduled"
+        ? lang === "es"
+          ? `Lo recogen a las ${time(r.pickupAt, s, lang)}.`
+          : `Pickup at ${time(r.pickupAt, s, lang)}.`
+        : lang === "es"
+          ? "Pedido para ahorita."
+          : "Order for right now.",
+    url: `/${lang}/panel/${s.slug}`,
+    tag: `prep-${r.id}`,
+  }));
+
+/** Scheduled hours ahead: still coming? */
+export const askCustomerToConfirm = (s: StallState, r: Reservation) =>
+  sendTo(s.slug, r.id, (lang) => ({
+    title: lang === "es" ? `¿Sigues en pie para las ${time(r.pickupAt, s, lang)}?` : `Still coming at ${time(r.pickupAt, s, lang)}?`,
+    body:
+      lang === "es"
+        ? `Confirma tu pedido en ${s.name} para que lo empiecen a preparar. Si no confirmas, se cancela sin costo.`
+        : `Confirm your order at ${s.name} so they start preparing it. If you don't, it is cancelled at no cost.`,
+    url: `/${lang}/${s.slug}`,
+    tag: `confirm-${r.id}`,
+  }));
+
+export const tellCustomerReady = (s: StallState, r: Reservation) =>
+  sendTo(s.slug, r.id, (lang) => ({
+    title: lang === "es" ? "¡Tu pedido está listo!" : "Your order is ready!",
+    body:
+      lang === "es"
+        ? `Pasa por él a ${s.name}. Di tu código al recoger.`
+        : `Pick it up at ${s.name}. Say your code at the counter.`,
+    url: `/${lang}/${s.slug}`,
+    tag: `ready-${r.id}`,
+  }));

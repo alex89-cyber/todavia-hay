@@ -95,6 +95,13 @@ type ReservationRow = {
   payer_id: string | null;
   pickup_code?: string | null;
   order_number?: number | null;
+  pickup_mode?: "asap" | "scheduled";
+  pickup_at?: string | null;
+  confirmed_at?: string | null;
+  ready_at?: string | null;
+  no_show?: boolean;
+  confirm_asked_at?: string | null;
+  prep_alerted_at?: string | null;
   reservation_items: {
     dish_id: string;
     qty: number;
@@ -104,7 +111,9 @@ type ReservationRow = {
 const RESERVATION_COLS_BASE =
   "id, customer_name, total_cents, status, pickup_by, created_at, paypal_order_id, paypal_authorization_id, payer_id, reservation_items(dish_id, qty)";
 // pickup_code (migration 0008) and order_number (0009) load only once their migration ran.
+// Pickup columns come from migration 0014.
 const RESERVATION_COLS = [
+  `${RESERVATION_COLS_BASE}, pickup_code, order_number, pickup_mode, pickup_at, confirmed_at, ready_at, no_show, confirm_asked_at, prep_alerted_at`,
   `${RESERVATION_COLS_BASE}, pickup_code, order_number`,
   `${RESERVATION_COLS_BASE}, pickup_code`,
   RESERVATION_COLS_BASE,
@@ -115,7 +124,7 @@ async function withPickupCode<R extends { error: { message: string } | null }>(
 ): Promise<R> {
   let result = await query(RESERVATION_COLS[0]);
   for (const cols of RESERVATION_COLS.slice(1)) {
-    if (!/pickup_code|order_number/.test(result.error?.message ?? "")) break;
+    if (!/pickup_code|order_number|pickup_mode|pickup_at|confirmed_at|ready_at|no_show|confirm_asked_at|prep_alerted_at/.test(result.error?.message ?? "")) break;
     result = await query(cols);
   }
   return result;
@@ -136,6 +145,13 @@ const toReservation = (
   payerId: r.payer_id,
   pickupCode: r.pickup_code ?? null,
   orderNumber: r.order_number ?? null,
+  pickupMode: r.pickup_mode ?? "asap",
+  pickupAt: r.pickup_at ? new Date(r.pickup_at).toISOString() : null,
+  confirmedAt: r.confirmed_at ?? null,
+  readyAt: r.ready_at ?? null,
+  noShow: r.no_show ?? false,
+  confirmAskedAt: r.confirm_asked_at ?? null,
+  prepAlertedAt: r.prep_alerted_at ?? null,
   lines: r.reservation_items.map((line) => ({
     dishId: line.dish_id,
     qty: line.qty,
@@ -1161,6 +1177,78 @@ export const supabaseStore: StallStore = {
         auth: watch.auth,
         lang: watch.lang,
       })
+    );
+  },
+
+  // =========================================
+  // RECOGER
+  // =========================================
+
+  async updatePickup(slug, id, patch) {
+    const business = await must(slug);
+    const cols: Record<string, unknown> = {};
+    if (patch.pickupMode !== undefined) cols.pickup_mode = patch.pickupMode;
+    if (patch.pickupAt !== undefined) cols.pickup_at = patch.pickupAt;
+    if (patch.confirmedAt !== undefined) cols.confirmed_at = patch.confirmedAt;
+    if (patch.readyAt !== undefined) cols.ready_at = patch.readyAt;
+    if (patch.noShow !== undefined) cols.no_show = patch.noShow;
+    if (patch.confirmAskedAt !== undefined) cols.confirm_asked_at = patch.confirmAskedAt;
+    if (patch.prepAlertedAt !== undefined) cols.prep_alerted_at = patch.prepAlertedAt;
+    if (!Object.keys(cols).length) return;
+    check(
+      await db().from("reservations").update(cols).eq("id", id).eq("business_id", business.id),
+      "update pickup",
+    );
+  },
+
+  async savePush(slug, target) {
+    const business = await must(slug);
+    check(
+      await db()
+        .from("pickup_push")
+        .upsert(
+          {
+            business_id: business.id,
+            reservation_id: target.reservationId,
+            endpoint: target.endpoint,
+            p256dh: target.p256dh,
+            auth: target.auth,
+            lang: target.lang,
+          },
+          { onConflict: "business_id,reservation_id,endpoint" },
+        ),
+      "save push",
+    );
+  },
+
+  async pushTargets(slug, reservationId) {
+    const business = await must(slug);
+    let q = db()
+      .from("pickup_push")
+      .select("reservation_id, endpoint, p256dh, auth, lang")
+      .eq("business_id", business.id);
+    q = reservationId ? q.eq("reservation_id", reservationId) : q.is("reservation_id", null);
+    const rows = check(await q, "push targets") as {
+      reservation_id: string | null;
+      endpoint: string;
+      p256dh: string;
+      auth: string;
+      lang: "es" | "en";
+    }[];
+    return rows.map((r) => ({
+      reservationId: r.reservation_id,
+      endpoint: r.endpoint,
+      p256dh: r.p256dh,
+      auth: r.auth,
+      lang: r.lang,
+    }));
+  },
+
+  async dropPush(slug, endpoint) {
+    const business = await must(slug);
+    check(
+      await db().from("pickup_push").delete().eq("business_id", business.id).eq("endpoint", endpoint),
+      "drop push",
     );
   },
 };

@@ -16,6 +16,7 @@ import {
   cancel,
   deliver,
   loadStall,
+  markReady,
 } from "@/lib/reservations";
 
 import { store } from "@/lib/store";
@@ -276,6 +277,17 @@ const settings = z.object({
   showOpeningHours: z.boolean().optional(),
   showSocialLinks: z.boolean().optional(),
   showGallery: z.boolean().optional(),
+
+  // Recoger
+  pickup: z
+    .object({
+      asapMinutes: z.number().int().min(1).max(240),
+      noticeMinutes: z.number().int().min(0).max(240),
+      slotMinutes: z.number().int().min(5).max(120),
+      maxPerSlot: z.number().int().min(1).max(500).nullable(),
+      toleranceMinutes: z.number().int().min(0).max(240),
+    })
+    .optional(),
 });
 
 // ==========================================
@@ -482,6 +494,23 @@ const Action = z.discriminatedUnion(
         .string()
         .max(80)
         .optional(),
+    }),
+
+    z.object({
+      action: z.literal("ready"),
+      reservationId: z.string().min(1),
+    }),
+
+    z.object({
+      action: z.literal("ownerPush"),
+      lang: z.enum(["es", "en"]),
+      subscription: z.object({
+        endpoint: z.string().url().max(2048),
+        keys: z.object({
+          p256dh: z.string().min(1).max(200),
+          auth: z.string().min(1).max(100),
+        }),
+      }),
     }),
 
     z.object({
@@ -943,6 +972,24 @@ export async function POST(
     // original de PayPal y códigos de
     // entrega de los apartados.
     // ======================================
+
+    case "ready": {
+      if (!(await markReady(slug, a.reservationId))) {
+        return Response.json({ error: "not_authorized" }, { status: 409 });
+      }
+      return Response.json(ownerView((await store.get(slug))!));
+    }
+
+    case "ownerPush": {
+      await store.savePush(slug, {
+        reservationId: null,
+        endpoint: a.subscription.endpoint,
+        p256dh: a.subscription.keys.p256dh,
+        auth: a.subscription.keys.auth,
+        lang: a.lang,
+      });
+      return Response.json(ownerView((await store.get(slug))!));
+    }
 
     case "deliver":
     case "cancelReservation": {
