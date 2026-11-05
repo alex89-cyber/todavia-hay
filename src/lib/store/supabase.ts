@@ -1,0 +1,1166 @@
+
+import "server-only";
+
+import {
+  createClient,
+  type SupabaseClient,
+} from "@supabase/supabase-js";
+
+import {
+  DEMO_OPENED_MINUTES_AGO,
+  demoDbIds,
+  demoIngredients,
+  demoSeedSales,
+} from "../demo-data";
+
+import type { Dish, Ingredient } from "../inventory";
+
+import {
+  cashUp,
+  type PaymentMethod,
+  type Reservation,
+  type ReservationStatus,
+  type Sale,
+  type StallState,
+} from "../stall";
+
+import type {
+  RedeemResult,
+  ReserveResult,
+  SaleResult,
+  StallStore,
+  Watch,
+} from "./types";
+
+// Supabase-backed store.
+// Runs on the server using the service role key.
+// Stock changes use SQL functions to remain atomic.
+
+let client: SupabaseClient | null = null;
+
+function db(): SupabaseClient {
+  return (client ??= createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    }
+  ));
+}
+
+function check<T>(
+  r: {
+    data: T;
+    error: { message: string } | null;
+  },
+  what: string
+): T {
+  if (r.error) {
+    throw new Error(
+      `Supabase ${what}: ${r.error.message}`
+    );
+  }
+
+  return r.data;
+}
+
+type BusinessRow = {
+  id: string;
+  slug: string;
+  name: string;
+  currency: string;
+  timezone: string;
+  is_open: boolean;
+  hold_minutes: number;
+  stamps_per_reward: number;
+  reward_dish_id: string | null;
+  updated_at: string;
+
+  // Personalización individual del negocio
+  settings: import("../stall").StallSettings | null;
+};
+
+type ReservationRow = {
+  id: string;
+  customer_name: string;
+  total_cents: number;
+  status: ReservationStatus;
+  pickup_by: string;
+  created_at: string;
+  paypal_order_id: string | null;
+  paypal_authorization_id: string | null;
+  payer_id: string | null;
+  pickup_code?: string | null;
+  order_number?: number | null;
+  reservation_items: {
+    dish_id: string;
+    qty: number;
+  }[];
+};
+
+const RESERVATION_COLS_BASE =
+  "id, customer_name, total_cents, status, pickup_by, created_at, paypal_order_id, paypal_authorization_id, payer_id, reservation_items(dish_id, qty)";
+// pickup_code (migration 0008) and order_number (0009) load only once their migration ran.
+const RESERVATION_COLS = [
+  `${RESERVATION_COLS_BASE}, pickup_code, order_number`,
+  `${RESERVATION_COLS_BASE}, pickup_code`,
+  RESERVATION_COLS_BASE,
+];
+
+async function withPickupCode<R extends { error: { message: string } | null }>(
+  query: (cols: string) => PromiseLike<R>,
+): Promise<R> {
+  let result = await query(RESERVATION_COLS[0]);
+  for (const cols of RESERVATION_COLS.slice(1)) {
+    if (!/pickup_code|order_number/.test(result.error?.message ?? "")) break;
+    result = await query(cols);
+  }
+  return result;
+}
+
+const toReservation = (
+  r: ReservationRow
+): Reservation => ({
+  id: r.id,
+  customerName: r.customer_name,
+  totalCents: r.total_cents,
+  status: r.status,
+  pickupBy: new Date(r.pickup_by).toISOString(),
+  createdAt: new Date(r.created_at).toISOString(),
+  paypalOrderId: r.paypal_order_id,
+  paypalAuthorizationId:
+    r.paypal_authorization_id,
+  payerId: r.payer_id,
+  pickupCode: r.pickup_code ?? null,
+  orderNumber: r.order_number ?? null,
+  lines: r.reservation_items.map((line) => ({
+    dishId: line.dish_id,
+    qty: line.qty,
+  })),
+});
+
+function stockError(error: {
+  message: string;
+  details?: string;
+}):
+  | {
+      reason: "closed" | "short";
+      short: string[];
+    }
+  | null {
+  if (error.message.includes("closed")) {
+    return {
+      reason: "closed",
+      short: [],
+    };
+  }
+
+  if (
+    error.message.includes("insufficient_stock")
+  ) {
+    const detail = error.details ?? "";
+
+    return {
+      reason: "short",
+      short:
+        detail && detail !== "sold_out"
+          ? detail.split(",")
+          : [],
+    };
+  }
+
+  return null;
+}
+
+async function businessBySlug(
+  slug: string
+): Promise<BusinessRow | null> {
+  return check(
+    await db()
+      .from("businesses")
+      .select("*")
+      .eq("slug", slug)
+      .maybeSingle(),
+    "business"
+  );
+}
+
+async function activeOnly<
+  R extends {
+    error: { message: string } | null;
+  },
+>(
+  filtered: PromiseLike<R>,
+  all: () => PromiseLike<R>
+): Promise<R> {
+  const result = await filtered;
+
+  return result.error?.message.includes("archived")
+    ? all()
+    : result;
+}
+
+async function load(
+  b: BusinessRow
+): Promise<StallState> {
+  const recent = new Date(
+    Date.now() - 24 * 3600_000
+  ).toISOString();
+
+  const ingredientsQ = () =>
+    db()
+      .from("ingredients")
+      .select("id, name, unit, stock")
+      .eq("business_id", b.id)
+      .order("name");
+
+  const dishesQ = () =>
+    db()
+      .from("dishes")
+      .select(
+        "id, name_es, name_en, image_url, price_cents, sold_out, sort, recipe_items(ingredient_id, qty)"
+      )
+      .eq("business_id", b.id)
+      .order("sort");
+
+  const [ingRes, dishRes, dayRes, resRes] =
+    await Promise.all([
+      activeOnly(
+        ingredientsQ().eq("archived", false),
+        ingredientsQ
+      ),
+      activeOnly(
+        dishesQ().eq("archived", false),
+        dishesQ
+      ),
+      db()
+        .from("days")
+        .select("id, opened_at, opening_count")
+        .eq("business_id", b.id)
+        .order("opened_at", {
+          ascending: false,
+        })
+        .limit(1)
+        .maybeSingle(),
+      withPickupCode((cols) =>
+        db()
+          .from("reservations")
+          .select(cols)
+          .eq("business_id", b.id)
+          .gte("created_at", recent)
+          .order("created_at"),
+      ),
+    ]);
+
+  const reservations = (
+    (check(resRes, "reservations") ??
+      []) as unknown as ReservationRow[]
+  ).map(toReservation);
+
+  const payers = [
+    ...new Set(
+      reservations.flatMap((r) =>
+        r.payerId ? [r.payerId] : []
+      )
+    ),
+  ];
+
+  const stamps: Record<string, number> =
+    Object.fromEntries(
+      payers.map((payer) => [payer, 0])
+    );
+
+  type CardRow = {
+    payer_id: string;
+    label: string | null;
+    stamps: number;
+    updated_at: string;
+  };
+
+  const [recentRes, payerRes] =
+    await Promise.all([
+      db()
+        .from("stamp_cards")
+        .select(
+          "payer_id, label, stamps, updated_at"
+        )
+        .eq("business_id", b.id)
+        .order("updated_at", {
+          ascending: false,
+        })
+        .limit(50),
+
+      payers.length
+        ? db()
+            .from("stamp_cards")
+            .select(
+              "payer_id, label, stamps, updated_at"
+            )
+            .eq("business_id", b.id)
+            .in("payer_id", payers)
+        : Promise.resolve({
+            data: [] as CardRow[],
+            error: null,
+          }),
+    ]);
+
+  const recentCards = (
+    check(recentRes, "stamp cards") ?? []
+  ) as CardRow[];
+
+  const payerCards = (
+    check(payerRes, "stamp cards") ?? []
+  ) as CardRow[];
+
+  for (const card of [
+    ...recentCards,
+    ...payerCards,
+  ]) {
+    if (card.payer_id in stamps) {
+      stamps[card.payer_id] = card.stamps;
+    }
+  }
+
+  const cards = recentCards.map((card) => ({
+    id: card.payer_id,
+    label: card.label,
+    stamps: card.stamps,
+    updatedAt: new Date(
+      card.updated_at
+    ).toISOString(),
+  }));
+
+  const ingredients: Ingredient[] = (
+    check(ingRes, "ingredients") ?? []
+  ).map((ingredient) => ({
+    id: ingredient.id,
+    name: ingredient.name,
+    unit: ingredient.unit,
+    stock: Number(ingredient.stock),
+  }));
+
+  // =========================================
+  // DISHES WITH IMAGES
+  // =========================================
+
+  const dishes: Dish[] = (
+    check(dishRes, "dishes") ?? []
+  ).map((dish) => ({
+    id: dish.id,
+    nameEs: dish.name_es,
+    nameEn: dish.name_en,
+
+    // The image is loaded from Supabase.
+    imageUrl: dish.image_url ?? null,
+
+    priceCents: dish.price_cents,
+    soldOut: dish.sold_out,
+    recipe: (
+      dish.recipe_items as {
+        ingredient_id: string;
+        qty: number;
+      }[]
+    ).map((recipe) => ({
+      ingredientId: recipe.ingredient_id,
+      qty: Number(recipe.qty),
+    })),
+  }));
+
+  const day = check(dayRes, "day") as {
+    id: string;
+    opened_at: string;
+    opening_count: Record<string, number>;
+  } | null;
+
+  let sales: Sale[] = [];
+
+  if (day) {
+    const rows = check(
+      await db()
+        .from("sales")
+        .select(
+          "id, method, total_cents, created_at, sale_items(dish_id, qty)"
+        )
+        .eq("day_id", day.id)
+        .order("created_at"),
+      "sales"
+    );
+
+    sales = (rows ?? []).map((sale) => ({
+      id: sale.id,
+      method: sale.method as PaymentMethod,
+      totalCents: sale.total_cents,
+      at: new Date(
+        sale.created_at
+      ).toISOString(),
+      lines: (
+        sale.sale_items as {
+          dish_id: string;
+          qty: number;
+        }[]
+      ).map((line) => ({
+        dishId: line.dish_id,
+        qty: line.qty,
+      })),
+    }));
+  }
+
+  return {
+    slug: b.slug,
+    name: b.name,
+    settings: b.settings ?? undefined,
+    currency: b.currency,
+    timezone: b.timezone,
+    isOpen: b.is_open,
+    openedAt: day?.opened_at
+      ? new Date(day.opened_at).toISOString()
+      : null,
+    updatedAt: new Date(
+      b.updated_at
+    ).toISOString(),
+    dishes,
+    ingredients,
+    openingCount: Object.fromEntries(
+      Object.entries(
+        day?.opening_count ?? {}
+      ).map(([key, value]) => [
+        key,
+        Number(value),
+      ])
+    ),
+    sales,
+    holdMinutes: b.hold_minutes,
+    reservations,
+    loyalty: {
+      stampsPerReward: b.stamps_per_reward,
+      rewardDishId: b.reward_dish_id,
+      stamps,
+      cards,
+    },
+  };
+}
+
+async function must(
+  slug: string
+): Promise<BusinessRow> {
+  const business = await businessBySlug(slug);
+
+  if (!business) {
+    throw new Error(`Unknown stall ${slug}`);
+  }
+
+  return business;
+}
+
+const toDbLines = (
+  lines: {
+    dishId: string;
+    qty: number;
+  }[]
+) =>
+  lines.map((line) => ({
+    dish_id: line.dishId,
+    qty: line.qty,
+  }));
+
+export const supabaseStore: StallStore = {
+  async get(slug) {
+    const business = await businessBySlug(slug);
+    return business
+      ? load(business)
+      : null;
+  },
+
+  async open(slug, counts) {
+    const business = await must(slug);
+
+    check(
+      await db().rpc("open_day", {
+        p_business: business.id,
+        p_counts: counts,
+      }),
+      "open_day"
+    );
+
+    return load(await must(slug));
+  },
+
+  // =========================================
+  // HISTORICAL CASH-UP
+  // =========================================
+
+  async close(slug) {
+    const business = await must(slug);
+
+    const before = await load(business);
+    const summary = cashUp(before);
+
+    const snapshot = {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      summary,
+      dishes: before.dishes,
+      ingredients: before.ingredients,
+      openingCount: before.openingCount,
+    };
+
+    const dayId = check(
+      await db().rpc(
+        "close_day_with_snapshot",
+        {
+          p_business: business.id,
+          p_snapshot: snapshot,
+        }
+      ),
+      "close_day_with_snapshot"
+    ) as string;
+
+    if (!dayId) {
+      throw new Error(
+        "No se pudo guardar el cierre"
+      );
+    }
+
+    return {
+      state: await load(await must(slug)),
+      cashUp: summary,
+    };
+  },
+
+  async recordSale(
+    slug,
+    lines,
+    method
+  ): Promise<SaleResult> {
+    const business = await must(slug);
+
+    const result = await db().rpc(
+      "record_sale",
+      {
+        p_business: business.id,
+        p_lines: toDbLines(lines),
+        p_method: method,
+      }
+    );
+
+    if (result.error) {
+      const error = stockError(result.error);
+
+      if (error) {
+        return {
+          ok: false,
+          ...error,
+        };
+      }
+
+      throw new Error(
+        `Supabase record_sale: ${result.error.message}`
+      );
+    }
+
+    return {
+      ok: true,
+      state: await load(await must(slug)),
+    };
+  },
+
+  async setSoldOut(
+    slug,
+    dishId,
+    soldOut
+  ) {
+    const business = await must(slug);
+
+    check(
+      await db()
+        .from("dishes")
+        .update({
+          sold_out: soldOut,
+        })
+        .eq("id", dishId)
+        .eq("business_id", business.id),
+      "sold_out"
+    );
+
+    check(
+      await db()
+        .from("businesses")
+        .update({
+          updated_at:
+            new Date().toISOString(),
+        })
+        .eq("id", business.id),
+      "touch"
+    );
+
+    return load(await must(slug));
+  },
+
+  async restock(slug, adds) {
+    const business = await must(slug);
+
+    const result = await db().rpc(
+      "restock",
+      {
+        p_business: business.id,
+        p_adds: adds,
+      }
+    );
+
+    if (result.error) {
+      if (
+        result.error.message.includes("closed")
+      ) {
+        return {
+          ok: false,
+          reason: "closed",
+        };
+      }
+
+      throw new Error(
+        `Supabase restock: ${result.error.message}`
+      );
+    }
+
+    return {
+      ok: true,
+      state: await load(await must(slug)),
+    };
+  },
+
+  // =========================================
+  // SAVE MENU WITH IMAGE URL
+  // =========================================
+
+  async saveMenu(slug, menu) {
+    const business = await must(slug);
+
+    const result = await db().rpc(
+      "save_menu",
+      {
+        p_business: business.id,
+
+        p_ingredients: menu.ingredients,
+
+        p_dishes: menu.dishes.map(
+          (dish) => ({
+            id: dish.id,
+            name_es: dish.nameEs,
+            name_en: dish.nameEn,
+
+            // NEW: save the image URL.
+            image_url:
+              dish.imageUrl?.trim() || null,
+
+            price_cents: dish.priceCents,
+            recipe: dish.recipe,
+          })
+        ),
+      }
+    );
+
+    if (result.error) {
+      throw new Error(
+        `Supabase save_menu: ${result.error.message}`
+      );
+    }
+
+    return load(await must(slug));
+  },
+    // =========================================
+  // SAVE BUSINESS SETTINGS
+  // =========================================
+
+  async saveSettings(slug, input) {
+    const business = await must(slug);
+
+    const name = input.name.trim();
+
+    if (!name || name.length > 120) {
+      throw new Error("Invalid business name");
+    }
+
+    const updatedAt = new Date().toISOString();
+
+    check(
+      await db()
+        .from("businesses")
+        .update({
+          name,
+          settings: input.settings,
+          updated_at: updatedAt,
+        })
+        .eq("id", business.id),
+      "save business settings",
+    );
+
+    return load(await must(slug));
+  },
+  // =========================================
+  // DEMO RESET
+  // =========================================
+
+  async reset(slug) {
+    const business = await must(slug);
+
+    if (
+      business.id !== demoDbIds.business
+    ) {
+      return load(business);
+    }
+
+    check(
+      await db()
+        .from("sales")
+        .delete()
+        .eq("business_id", business.id),
+      "clear sales"
+    );
+
+    check(
+      await db()
+        .from("reservations")
+        .delete()
+        .eq("business_id", business.id),
+      "clear reservations"
+    );
+
+    check(
+      await db()
+        .from("days")
+        .delete()
+        .eq("business_id", business.id),
+      "clear days"
+    );
+
+    const counts = Object.fromEntries(
+      demoIngredients.map(
+        (ingredient) => [
+          demoDbIds.ingredients[
+            ingredient.id
+          ],
+          ingredient.stock,
+        ]
+      )
+    );
+
+    check(
+      await db().rpc("open_day", {
+        p_business: business.id,
+        p_counts: counts,
+      }),
+      "open_day"
+    );
+
+    const now = Date.now();
+
+    for (const seed of demoSeedSales()) {
+      const lines = [
+        {
+          dish_id:
+            demoDbIds.dishes[
+              seed.dishId
+            ],
+          qty: seed.qty,
+        },
+      ];
+
+      const saleId = check(
+        await db().rpc(
+          "record_sale",
+          {
+            p_business: business.id,
+            p_lines: lines,
+            p_method: seed.method,
+          }
+        ),
+        "seed sale"
+      ) as string;
+
+      check(
+        await db()
+          .from("sales")
+          .update({
+            created_at: new Date(
+              now -
+                seed.minutesAgo *
+                  60_000
+            ).toISOString(),
+          })
+          .eq("id", saleId),
+        "seed time"
+      );
+    }
+
+    check(
+      await db()
+        .from("days")
+        .update({
+          opened_at: new Date(
+            now -
+              DEMO_OPENED_MINUTES_AGO *
+                60_000
+          ).toISOString(),
+        })
+        .eq(
+          "business_id",
+          business.id
+        )
+        .is("closed_at", null),
+      "seed day"
+    );
+
+    return load(await must(slug));
+  },
+
+  // =========================================
+  // RESERVATIONS
+  // =========================================
+
+  async reserve(
+    slug,
+    customerName,
+    lines,
+    pickupBy
+  ): Promise<ReserveResult> {
+    const business = await must(slug);
+
+    const result = await db().rpc(
+      "reserve",
+      {
+        p_business: business.id,
+        p_customer: customerName,
+        p_lines: toDbLines(lines),
+        p_pickup_by:
+          pickupBy.toISOString(),
+      }
+    );
+
+    if (result.error) {
+      const error = stockError(result.error);
+
+      if (error) {
+        return {
+          ok: false,
+          ...error,
+        };
+      }
+
+      throw new Error(
+        `Supabase reserve: ${result.error.message}`
+      );
+    }
+
+    const created =
+      await this.getReservation(
+        slug,
+        result.data as string
+      );
+
+    if (!created) {
+      throw new Error(
+        "Supabase reserve: reservation not found after insert"
+      );
+    }
+
+    return {
+      ok: true,
+      reservation: created,
+    };
+  },
+
+  async getReservation(slug, id) {
+    const business = await must(slug);
+
+    const row = check(
+      await withPickupCode((cols) =>
+        db()
+          .from("reservations")
+          .select(cols)
+          .eq("id", id)
+          .eq("business_id", business.id)
+          .maybeSingle(),
+      ),
+      "reservation"
+    ) as unknown as ReservationRow | null;
+
+    return row
+      ? toReservation(row)
+      : null;
+  },
+
+  async setPayPalOrder(
+    slug,
+    id,
+    orderId
+  ) {
+    const business = await must(slug);
+
+    check(
+      await db()
+        .from("reservations")
+        .update({
+          paypal_order_id: orderId,
+        })
+        .eq("id", id)
+        .eq(
+          "business_id",
+          business.id
+        ),
+      "set order"
+    );
+  },
+
+  async markAuthorized(
+    slug,
+    id,
+    authorizationId,
+    payerId
+  ) {
+    const business = await must(slug);
+
+    check(
+      await db()
+        .from("reservations")
+        .update({
+          status: "authorized",
+          paypal_authorization_id:
+            authorizationId,
+          payer_id: payerId,
+          updated_at:
+            new Date().toISOString(),
+        })
+        .eq("id", id)
+        .eq(
+          "business_id",
+          business.id
+        )
+        .eq("status", "held"),
+      "authorize"
+    );
+
+    check(
+      await db()
+        .from("businesses")
+        .update({
+          updated_at:
+            new Date().toISOString(),
+        })
+        .eq("id", business.id),
+      "touch"
+    );
+  },
+
+  async markDelivered(
+    slug,
+    id
+  ) {
+    await must(slug);
+
+    const saleId = check(
+      await db().rpc(
+        "deliver_reservation",
+        {
+          p_reservation: id,
+        }
+      ),
+      "deliver"
+    );
+
+    return saleId != null;
+  },
+
+  async release(
+    slug,
+    id,
+    status
+  ) {
+    await must(slug);
+
+    return Boolean(
+      check(
+        await db().rpc(
+          "release_reservation",
+          {
+            p_reservation: id,
+            p_status: status,
+          }
+        ),
+        "release"
+      )
+    );
+  },
+
+  // =========================================
+  // LOYALTY AND STAMP CARDS
+  // =========================================
+
+  async stamps(
+    slug,
+    cardId
+  ) {
+    const business = await must(slug);
+
+    const card = check(
+      await db()
+        .from("stamp_cards")
+        .select("stamps")
+        .eq(
+          "business_id",
+          business.id
+        )
+        .eq("payer_id", cardId)
+        .maybeSingle(),
+      "stamp card"
+    ) as {
+      stamps: number;
+    } | null;
+
+    return card?.stamps ?? 0;
+  },
+
+  async addStamp(
+    slug,
+    cardId,
+    label
+  ) {
+    const business = await must(slug);
+
+    return check(
+      await db().rpc(
+        "add_stamp",
+        {
+          p_business: business.id,
+          p_card: cardId,
+          p_label: label ?? "",
+        }
+      ),
+      "add_stamp"
+    ) as number;
+  },
+
+  async redeem(
+    slug,
+    cardId
+  ): Promise<RedeemResult> {
+    const business = await must(slug);
+
+    const result = await db().rpc(
+      "redeem_reward",
+      {
+        p_business: business.id,
+        p_payer: cardId,
+      }
+    );
+
+    if (result.error) {
+      if (
+        result.error.message.includes(
+          "not_enough_stamps"
+        )
+      ) {
+        return {
+          ok: false,
+          reason: "not_enough",
+        };
+      }
+
+      if (
+        result.error.message.includes(
+          "no_reward"
+        )
+      ) {
+        return {
+          ok: false,
+          reason: "no_reward",
+        };
+      }
+
+      const error = stockError(
+        result.error
+      );
+
+      if (error) {
+        return {
+          ok: false,
+          reason: error.reason,
+        };
+      }
+
+      throw new Error(
+        `Supabase redeem_reward: ${result.error.message}`
+      );
+    }
+
+    return {
+      ok: true,
+      stampsLeft:
+        result.data as number,
+    };
+  },
+
+  // =========================================
+  // PUSH NOTIFICATIONS
+  // =========================================
+
+  async addWatch(
+    slug,
+    watch
+  ) {
+    const business = await must(slug);
+
+    check(
+      await db().rpc(
+        "add_watch",
+        {
+          p_business: business.id,
+          p_dish: watch.dishId,
+          p_endpoint: watch.endpoint,
+          p_p256dh: watch.p256dh,
+          p_auth: watch.auth,
+          p_lang: watch.lang,
+        }
+      ),
+      "add_watch"
+    );
+  },
+
+  async claimWatches(
+    slug,
+    open,
+    dishIds
+  ): Promise<Watch[]> {
+    const business = await must(slug);
+
+    const rows = check(
+      await db().rpc(
+        "claim_watches",
+        {
+          p_business: business.id,
+          p_open: open,
+          p_dishes: dishIds,
+        }
+      ),
+      "claim_watches"
+    ) as {
+      dish_id: string | null;
+      endpoint: string;
+      p256dh: string;
+      auth: string;
+      lang: "es" | "en";
+    }[];
+
+    return (rows ?? []).map(
+      (watch) => ({
+        dishId: watch.dish_id,
+        endpoint: watch.endpoint,
+        p256dh: watch.p256dh,
+        auth: watch.auth,
+        lang: watch.lang,
+      })
+    );
+  },
+};

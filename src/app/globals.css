@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+/* Warm, high-contrast palette: readable in daylight on a cheap phone at a stall. */
+:root {
+  color-scheme: light;
+  --background: #fbf6ef;
+  --surface: #ffffff;
+  --foreground: #2a1a14;
+  --muted: #7a6458;
+  --line: #eadfd3;
+  --brand: #a3341f;
+  --brand-strong: #7d2414;
+  --brand-soft: #f7e3da;
+  --ok: #1f7a3d;
+  --ok-soft: #dff2e5;
+  --warn: #b35c00;
+  --warn-soft: #fdebd3;
+  --bad: #b3261e;
+  --bad-soft: #f9dedc;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-soft: var(--brand-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* "Ticket del corte", the custom AG Studio widget on the cash-up page. */
+.th-ticket {
+  height: 100%;
+  overflow: auto;
+  padding: 8px 6px 14px;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  color: var(--foreground);
+}
+.th-ticket-paper {
+  background: #fffdf8;
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  padding: 16px 14px 12px;
+  box-shadow: 0 2px 6px rgb(42 26 20 / 0.08);
+  /* torn edge */
+  mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 12px 100%;
+  padding-bottom: 22px;
+}
+.th-ticket-name { text-align: center; font-weight: 700; font-size: 15px; text-transform: uppercase; }
+.th-ticket-date { text-align: center; font-size: 12px; color: var(--muted); }
+.th-ticket-rule {
+  margin: 10px 0 6px;
+  border-block: 1px dashed var(--muted);
+  padding: 3px 0;
+  text-align: center;
+  font-size: 12px;
+  letter-spacing: 0.15em;
+}
+.th-ticket ul { list-style: none; margin: 0; padding: 0; }
+.th-ticket li { display: flex; align-items: baseline; gap: 6px; padding: 3px 0; font-size: 13px; }
+.th-ticket li i { flex: 1; border-bottom: 1px dotted var(--muted); transform: translateY(-3px); }
+.th-ticket li b, .th-ticket-total b { font-variant-numeric: tabular-nums; }
+.th-ticket-total {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  border-top: 2px solid var(--foreground);
+  padding-top: 6px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--brand);
+}
+.th-ticket-thanks { margin-top: 12px; text-align: center; font-size: 11px; color: var(--muted); }
+
+/* Wrong pickup code: the boxes shake, like a rejected PIN. */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-8px); }
+  40%, 80% { transform: translateX(8px); }
+}
+.animate-shake {
+  animation: shake 0.35s ease-in-out;
+}
