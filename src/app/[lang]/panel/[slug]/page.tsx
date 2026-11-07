@@ -5,7 +5,7 @@ import { OwnerLogin } from "@/components/OwnerLogin";
 import { OwnerPanel } from "@/components/OwnerPanel";
 import { getDictionary, hasLocale } from "@/dictionaries";
 import { ownerView } from "@/lib/stall";
-import { demoMode, isOwner, ownerPinRequired } from "@/lib/owner-auth";
+import { isOwner, ownerPinRequired } from "@/lib/owner-auth";
 import { loadStall } from "@/lib/reservations";
 import { vapidPublicKey } from "@/lib/push";
 
@@ -40,7 +40,6 @@ async function Panel({ params }: { params: PanelRouteProps["params"] }) {
       lang={lang}
       timezone={state.timezone}
       t={t}
-      demo={demoMode()}
       canSignOut={ownerPinRequired()}
       vapidKey={vapidPublicKey()}
     />

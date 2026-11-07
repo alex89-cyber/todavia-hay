@@ -29,6 +29,7 @@ import {
 import type { PublicSnapshot } from "@/lib/stall";
 
 import { AgentChat } from "./AgentChat";
+import { InstallAppButton } from "./InstallAppButton";
 
 import {
   NotifyButton,
@@ -1192,6 +1193,8 @@ export function PublicStall({
                 n: mins,
               })}
         </span>
+
+        <InstallAppButton lang={lang} />
       </div>
     </div>
   );

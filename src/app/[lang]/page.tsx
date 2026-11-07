@@ -16,7 +16,7 @@ export default async function Home({
   // Tres destinos diferentes.
   const demoHref = `/${lang}/birria-dona-lupe`;
   const ownerHref = `/${lang}/login`;
-  const businessDemoHref = `/${lang}/panel/birria-dona-lupe`;
+  const businessDemoHref = "#contacto";
 
   const features = [
     {
@@ -391,8 +391,8 @@ export default async function Home({
             </h2>
             <p className="mx-auto mt-6 max-w-2xl text-base leading-8 text-[#78877C]">
               {es
-                ? "Explora ambas experiencias sin PIN. Las demostraciones no modifican los datos administrativos reales."
-                : "Explore both experiences without a PIN. The demos don't change real business data."}
+                ? "Mira la página de un puesto real y pídenos una demostración del panel para tu negocio."
+                : "See a real stall's page and ask us for a demo of the dashboard for your business."}
             </p>
           </div>
 
@@ -488,13 +488,13 @@ export default async function Home({
                     className="inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl bg-[#244D38] px-6 py-4 text-sm font-black text-white transition hover:bg-[#32684C]"
                   >
                     {es
-                      ? "Explorar panel del negocio"
-                      : "Explore business dashboard"} ↗
+                      ? "Pedir una demostración"
+                      : "Request a demo"} ↗
                   </Link>
                   <p className="mt-3 text-center text-xs text-[#93A096]">
                     {es
-                      ? "Demostración interactiva, sin PIN"
-                      : "Interactive demo, no PIN required"}
+                      ? "Te mostramos el panel con tu propio menú"
+                      : "We'll show you the dashboard with your own menu"}
                   </p>
                 </div>
               </div>
@@ -585,8 +585,8 @@ export default async function Home({
                   </Link>
                   <p className="mt-3 text-center text-xs text-[#93A096]">
                     {es
-                      ? "Demo pública de Birria Doña Lupe"
-                      : "Birria Doña Lupe public demo"}
+                      ? "Birria Doña Lupe, un puesto en vivo"
+                      : "Birria Doña Lupe, a live stall"}
                   </p>
                 </div>
               </div>
@@ -725,7 +725,7 @@ export default async function Home({
                 href={businessDemoHref}
                 className="rounded-2xl bg-[#244D38] px-6 py-4 text-sm font-black text-white hover:bg-[#32684C]"
               >
-                {es ? "Explorar panel del negocio" : "Explore business dashboard"} ↗
+                {es ? "Pedir una demostración" : "Request a demo"} ↗
               </Link>
               <Link
                 href={demoHref}
@@ -761,13 +761,13 @@ export default async function Home({
               href={businessDemoHref}
               className="rounded-2xl bg-white px-8 py-4 text-sm font-black text-[#244D38] transition hover:-translate-y-1"
             >
-              {es ? "Probar panel del negocio" : "Try business dashboard"} ↗
+              {es ? "Pedir una demostración" : "Request a demo"} ↗
             </Link>
             <Link
               href={demoHref}
               className="rounded-2xl border border-white/35 bg-white/10 px-8 py-4 text-sm font-black text-white transition hover:-translate-y-1"
             >
-              {es ? "Ver demo del cliente" : "View customer demo"} ↗
+              {es ? "Ver un puesto en vivo" : "See a live stall"} ↗
             </Link>
             <a
               href="#contacto"
@@ -798,7 +798,7 @@ export default async function Home({
 
           <div className="flex flex-wrap items-center gap-5 text-sm font-semibold text-[#66806D]">
             <Link href={businessDemoHref} className="hover:text-[#244D38]">
-              {es ? "Demo negocio" : "Business demo"}
+              {es ? "Pedir demostración" : "Request a demo"}
             </Link>
             <Link href={demoHref} className="hover:text-[#244D38]">
               {t.demoLink}

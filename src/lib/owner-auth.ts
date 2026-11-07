@@ -7,7 +7,8 @@ import { isMember, memberships } from "./accounts";
 
 // The owner panel, the cash-up and every owner action sit behind a PIN set in
 // OWNER_PIN. Entering it once leaves a signed, httpOnly cookie on that device.
-// Without OWNER_PIN (local dev, tests) everything stays open.
+// Without accounts or OWNER_PIN, everything stays open only outside production
+// (local dev, tests); in production the panel stays closed.
 
 export const OWNER_COOKIE = "th_owner";
 const MAX_AGE_S = 30 * 24 * 3600;
@@ -39,7 +40,13 @@ export async function isOwner(slug?: string) {
     if (!me) return false;
     return slug ? isMember(slug, me.id) : (await memberships(me.id)).length > 0;
   }
-  if (!ownerPinRequired()) return true;
+  if (!ownerPinRequired()) {
+    if (process.env.NODE_ENV === "production") {
+      console.error("Owner panel closed: set NEXT_PUBLIC_SUPABASE_ANON_KEY (accounts) or OWNER_PIN.");
+      return false;
+    }
+    return true;
+  }
   const c = (await cookies()).get(OWNER_COOKIE)?.value;
   return Boolean(c && same(c, token()));
 }
@@ -76,5 +83,3 @@ export function recordFailure(ip: string) {
   tries.set(ip, [...(tries.get(ip) ?? []), Date.now()]);
 }
 
-/** Demo-only tools (resetting the stall to a seeded day) are on with DEMO_MODE=1. */
-export const demoMode = () => ["1", "true", "yes"].includes((process.env.DEMO_MODE ?? "").toLowerCase());

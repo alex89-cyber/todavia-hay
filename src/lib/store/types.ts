@@ -434,17 +434,6 @@ export interface StallStore {
   ): Promise<LoyaltyCardStatus>;
 
   // ========================================
-  // DEMO
-  // ========================================
-
-  /**
-   * Demo only: restore seeded operations.
-   */
-  reset(
-    slug: string,
-  ): Promise<StallState>;
-
-  // ========================================
   // RESERVATIONS
   // ========================================
 

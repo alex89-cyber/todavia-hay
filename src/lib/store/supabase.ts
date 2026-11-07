@@ -6,13 +6,6 @@ import {
   type SupabaseClient,
 } from "@supabase/supabase-js";
 
-import {
-  DEMO_OPENED_MINUTES_AGO,
-  demoDbIds,
-  demoIngredients,
-  demoSeedSales,
-} from "../demo-data";
-
 import type { Dish, Ingredient } from "../inventory";
 
 import {
@@ -718,123 +711,6 @@ export const supabaseStore: StallStore = {
 
     return load(await must(slug));
   },
-  // =========================================
-  // DEMO RESET
-  // =========================================
-
-  async reset(slug) {
-    const business = await must(slug);
-
-    if (
-      business.id !== demoDbIds.business
-    ) {
-      return load(business);
-    }
-
-    check(
-      await db()
-        .from("sales")
-        .delete()
-        .eq("business_id", business.id),
-      "clear sales"
-    );
-
-    check(
-      await db()
-        .from("reservations")
-        .delete()
-        .eq("business_id", business.id),
-      "clear reservations"
-    );
-
-    check(
-      await db()
-        .from("days")
-        .delete()
-        .eq("business_id", business.id),
-      "clear days"
-    );
-
-    const counts = Object.fromEntries(
-      demoIngredients.map(
-        (ingredient) => [
-          demoDbIds.ingredients[
-            ingredient.id
-          ],
-          ingredient.stock,
-        ]
-      )
-    );
-
-    check(
-      await db().rpc("open_day", {
-        p_business: business.id,
-        p_counts: counts,
-      }),
-      "open_day"
-    );
-
-    const now = Date.now();
-
-    for (const seed of demoSeedSales()) {
-      const lines = [
-        {
-          dish_id:
-            demoDbIds.dishes[
-              seed.dishId
-            ],
-          qty: seed.qty,
-        },
-      ];
-
-      const saleId = check(
-        await db().rpc(
-          "record_sale",
-          {
-            p_business: business.id,
-            p_lines: lines,
-            p_method: seed.method,
-          }
-        ),
-        "seed sale"
-      ) as string;
-
-      check(
-        await db()
-          .from("sales")
-          .update({
-            created_at: new Date(
-              now -
-                seed.minutesAgo *
-                  60_000
-            ).toISOString(),
-          })
-          .eq("id", saleId),
-        "seed time"
-      );
-    }
-
-    check(
-      await db()
-        .from("days")
-        .update({
-          opened_at: new Date(
-            now -
-              DEMO_OPENED_MINUTES_AGO *
-                60_000
-          ).toISOString(),
-        })
-        .eq(
-          "business_id",
-          business.id
-        )
-        .is("closed_at", null),
-      "seed day"
-    );
-
-    return load(await must(slug));
-  },
-
   // =========================================
   // RESERVATIONS
   // =========================================

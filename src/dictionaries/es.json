@@ -104,8 +104,6 @@
     "used": "Ingredientes usados",
     "leftOver": "sobra {n}",
     "done": "Listo",
-    "reset": "Reiniciar demo",
-    "demoNote": "Demo: los datos se guardan en el servidor y se reinician al reiniciarlo.",
     "reservations": "Apartados",
     "awaitingPayment": "Esperando que pague en PayPal",
     "handTitle": "Entregar apartado",

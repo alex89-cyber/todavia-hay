@@ -293,7 +293,8 @@ function save(
    MEMORY STORE
    ========================================= */
 
-export const memoryStore: StallStore = {
+/** Local dev and tests only: `reset` brings the demo stall back to a seeded day. */
+export const memoryStore: StallStore & { reset(slug: string): Promise<StallState> } = {
   async get(slug) {
     const s = stalls.get(slug);
 
