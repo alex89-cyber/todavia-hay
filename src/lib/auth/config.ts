@@ -1,41 +1,40 @@
 
 /**
  * TODAVÍA HAY
+ * Configuración de autenticación con Supabase
  *
- * Configuración de autenticación.
+ * Clientes:
+ * - Registro con correo y contraseña
+ * - Confirmación de correo
+ * - Recuperación de contraseña
  *
- * Supabase puede utilizarse como base de datos
- * sin obligar a iniciar sesión con correo.
- *
- * El acceso con cuentas se configura mediante
- * AUTH_ENABLED.
+ * Negocios:
+ * - Acceso mediante cuentas autorizadas
+ * - El PIN anterior se conserva temporalmente
  */
 
 export const AUTH_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "";
 
+// Compatible con claves anon y publishable.
 export const AUTH_KEY =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+  (
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    ""
+  ).trim();
 
-/**
- * Determina si las cuentas de Supabase
- * están habilitadas.
- *
- * true = acceso mediante cuentas
- * false = sistema alternativo de PIN
- */
-export const authEnabled = () =>
-  process.env.AUTH_ENABLED === "true" &&
-  Boolean(AUTH_URL && AUTH_KEY);
+// Comprueba si Supabase Auth está configurado.
+export function authEnabled(): boolean {
+  return Boolean(AUTH_URL && AUTH_KEY);
+}
 
-/**
- * Evita redirecciones a sitios externos
- * después de iniciar sesión.
- */
+// Evita redirecciones a sitios externos
+// después de iniciar sesión.
 export function safeNext(
   next: string | null | undefined,
   fallback: string,
-) {
+): string {
   if (
     !next ||
     !next.startsWith("/") ||

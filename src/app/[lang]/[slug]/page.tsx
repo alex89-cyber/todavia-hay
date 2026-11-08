@@ -198,6 +198,14 @@ async function Stall({
   return (
     <>
       <nav className="mb-4 flex justify-end gap-4 text-sm">
+        {authEnabled() && !me && (
+          <Link
+            className="font-semibold text-brand underline"
+            href={`/${lang}/registro?next=${encodeURIComponent(`/${lang}/${slug}#chat`)}`}
+          >
+            {lang === "es" ? "Crear cuenta" : "Sign up"}
+          </Link>
+        )}
         {authEnabled() && (
           <Link
             className="font-semibold text-brand underline"

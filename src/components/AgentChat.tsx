@@ -10,6 +10,7 @@ import {
 
 import { useRouter } from "next/navigation";
 
+import { RewardsChatInvite } from "./RewardsChatInvite";
 import type { Dictionary } from "@/dictionaries";
 
 import type {
@@ -765,6 +766,11 @@ export function AgentChat({
       id="chat"
       className="flex flex-col gap-3 rounded-2xl bg-surface p-4 shadow-sm"
     >
+      <RewardsChatInvite
+        slug={slug}
+        lang={lang}
+        signedIn={signedIn}
+      />
       {/* ====================================
           ENCABEZADO
       ==================================== */}
