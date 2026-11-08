@@ -38,6 +38,7 @@ export default async function AdminLoginPage({
           mode="login"
           lang={lang}
           next={`/${lang}/admin`}
+          allowSignup={false}
         />
       </div>
     </main>
