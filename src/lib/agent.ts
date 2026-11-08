@@ -44,7 +44,7 @@ import {
 
 // ==========================================
 // TODAVÍA HAY
-// ASISTENTE DE PEDIDOS SIN PAYPAL
+// ASISTENTE DE PEDIDOS
 // ==========================================
 //
 // - Pedidos mediante Gemini
@@ -1121,7 +1121,7 @@ export async function chat(
   });
 
   // ========================================
-  // CREAR RESERVACIÓN SIN PAYPAL
+  // CREAR RESERVACIÓN
   // ========================================
 
   const reserveOrder = tool({

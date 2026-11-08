@@ -33,7 +33,7 @@ import {
 // ==========================================
 //
 // - Chat con Gemini
-// - Reservaciones sin PayPal
+// - Apartados
 // - Pago contra entrega
 // - NIP de recogida
 // - Horarios disponibles

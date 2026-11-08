@@ -11,7 +11,7 @@ import type { Dish, Ingredient } from "../inventory";
 
 import {
   cashUp,
-  type PaymentMethod,
+  paymentMethod,
   type Reservation,
   type ReservationStatus,
   type Sale,
@@ -30,7 +30,7 @@ import type {
 // TODAVÍA HAY - SUPABASE
 // ==========================================
 
-// Los pedidos nuevos se confirman sin PayPal.
+// Los pedidos se confirman al apartar.
 // Los pagos se registran cuando el negocio
 // valida la entrega y selecciona un método.
 
@@ -90,12 +90,6 @@ type ReservationRow = {
   status: ReservationStatus;
   pickup_by: string;
   created_at: string;
-
-  // Campos históricos: no se utilizan
-  // para cobrar pedidos nuevos.
-  paypal_order_id: string | null;
-  paypal_authorization_id: string | null;
-
   payer_id: string | null;
   pickup_code?: string | null;
   order_number?: number | null;
@@ -119,7 +113,7 @@ type ReservationRow = {
 // ==========================================
 
 const RESERVATION_COLS_BASE =
-  "id, customer_name, total_cents, status, pickup_by, created_at, paypal_order_id, paypal_authorization_id, payer_id, reservation_items(dish_id, qty)";
+  "id, customer_name, total_cents, status, pickup_by, created_at, payer_id, reservation_items(dish_id, qty)";
 
 const RESERVATION_COLS = [
   `${RESERVATION_COLS_BASE}, pickup_code, order_number, pickup_mode, pickup_at, confirmed_at, ready_at, no_show, confirm_asked_at, prep_alerted_at, customer_id`,
@@ -167,8 +161,6 @@ const toReservation = (
   pickupBy: new Date(r.pickup_by).toISOString(),
   createdAt: new Date(r.created_at).toISOString(),
 
-  paypalOrderId: r.paypal_order_id,
-  paypalAuthorizationId: r.paypal_authorization_id,
   payerId: r.payer_id,
 
   pickupCode: r.pickup_code ?? null,
@@ -455,7 +447,7 @@ async function load(
       await db()
         .from("sales")
         .select(
-          "id, method, total_cents, created_at, sale_items(dish_id, qty)",
+          "id, method, total_cents, created_at, reservation_id, sale_items(dish_id, qty)",
         )
         .eq("day_id", day.id)
         .order("created_at"),
@@ -464,9 +456,10 @@ async function load(
 
     sales = (rows ?? []).map((sale) => ({
       id: sale.id,
-      method: sale.method as PaymentMethod,
+      method: paymentMethod(sale.method),
       totalCents: sale.total_cents,
       at: new Date(sale.created_at).toISOString(),
+      reservationId: sale.reservation_id,
 
       lines: (
         sale.sale_items as {
@@ -888,45 +881,19 @@ export const supabaseStore: StallStore = {
   },
 
   // ========================================
-  // COMPATIBILIDAD CON PEDIDOS ANTIGUOS
-  // ========================================
-
-  async setPayPalOrder(
-    slug,
-    id,
-    orderId,
-  ) {
-    const business = await must(slug);
-
-    check(
-      await db()
-        .from("reservations")
-        .update({
-          paypal_order_id: orderId,
-        })
-        .eq("id", id)
-        .eq("business_id", business.id),
-      "set order",
-    );
-  },
-
-  // ========================================
-  // CONFIRMAR PEDIDO SIN PAYPAL
+  // CONFIRMAR PEDIDO
   // ========================================
 
   async markAuthorized(
     slug,
     id,
-    _authorizationId,
     payerId,
   ) {
     const business = await must(slug);
 
     // El pedido pasa de held a authorized.
     // Esto NO significa que ya esté pagado.
-    //
-    // Los campos de PayPal permanecen en NULL.
-    // Se conserva payer_id para recompensas.
+    // payer_id es la tarjeta de sellos.
 
     const result = await db()
       .from("reservations")

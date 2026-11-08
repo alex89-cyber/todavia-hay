@@ -1,14 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
-const paypal = vi.hoisted(() => ({ captured: [] as string[], voided: [] as string[] }));
-vi.mock("./paypal", () => ({
-  PayPalError: class extends Error {},
-  authorizeOrder: vi.fn(),
-  createReservationOrder: vi.fn(),
-  captureAuthorization: vi.fn(async (id: string) => void paypal.captured.push(id)),
-  voidAuthorization: vi.fn(async (id: string) => void paypal.voided.push(id)),
-}));
 vi.mock("./push", () => ({
   notifyWaiting: vi.fn(async () => 0),
   alertOwnerToPrepare: vi.fn(async () => 1),
@@ -28,7 +20,7 @@ async function reserved(createdAt: Date, mode: "asap" | "scheduled", pickupAt: D
   const dish = s.dishes[0];
   const r = await store.reserve(SLUG, "Ana Ramírez", [{ dishId: dish.id, qty: 1 }], new Date(pickupAt.getTime() + toleranceMin * MIN));
   if (!r.ok) throw new Error(r.reason);
-  await store.markAuthorized(SLUG, r.reservation.id, `AUTH-${r.reservation.id}`, null);
+  await store.markAuthorized(SLUG, r.reservation.id, null);
   await store.updatePickup(SLUG, r.reservation.id, { pickupMode: mode, pickupAt: pickupAt.toISOString() });
   // createdAt drives "more than an hour ahead".
   const st = (await store.get(SLUG))!;
@@ -38,8 +30,6 @@ async function reserved(createdAt: Date, mode: "asap" | "scheduled", pickupAt: D
 
 describe("sweep", () => {
   beforeEach(() => {
-    paypal.captured.length = 0;
-    paypal.voided.length = 0;
     vi.clearAllMocks();
   });
 
@@ -50,7 +40,7 @@ describe("sweep", () => {
     await sweep((await store.get(SLUG))!, now);
     const r = await store.getReservation(SLUG, id);
     expect(r?.status).toBe("expired");
-    expect(paypal.captured).not.toContain(`AUTH-${id}`);
+    expect((await store.get(SLUG))!.sales.some((x) => x.reservationId === id)).toBe(false);
   });
 
   it("cancels for free an order scheduled hours ahead that was never confirmed", async () => {
@@ -60,7 +50,7 @@ describe("sweep", () => {
     await sweep((await store.get(SLUG))!, now);
     const r = await store.getReservation(SLUG, id);
     expect(r?.status).toBe("expired");
-    expect(paypal.captured).not.toContain(`AUTH-${id}`);
+    expect((await store.get(SLUG))!.sales.some((x) => x.reservationId === id)).toBe(false);
   });
 
   it("asks to confirm, then tells the kitchen once confirmed", async () => {

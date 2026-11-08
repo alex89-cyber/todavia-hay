@@ -20,6 +20,7 @@ import {
   type HistoricalInventoryRow,
 } from "@/lib/analytics";
 import { loadStall } from "@/lib/reservations";
+import { paymentMethod } from "@/lib/stall";
 
 type DayRow = {
   id: string;
@@ -222,7 +223,7 @@ async function fetchHistory(
     let request = db
       .from("sales")
       .select(
-        "id, day_id, method, total_cents, created_at, sale_items(dish_id, qty, price_cents, dishes(name_es, name_en))",
+        "id, day_id, method, total_cents, created_at, reservation_id, sale_items(dish_id, qty, price_cents, dishes(name_es, name_en))",
       )
       .eq("business_id", business.id)
       .order("created_at", { ascending: false })
@@ -239,8 +240,13 @@ async function fetchHistory(
 
     if (error) throw new Error(error.message);
 
-    const batch =
-      (data ?? []) as unknown as HistoricalSaleRow[];
+    // Un método viejo o desconocido se muestra como tarjeta.
+    const batch = (
+      (data ?? []) as unknown as HistoricalSaleRow[]
+    ).map((sale) => ({
+      ...sale,
+      method: paymentMethod(sale.method),
+    }));
 
     sales.push(...batch);
 

@@ -48,8 +48,6 @@ function res(over: Partial<Reservation>): Reservation {
     status: "authorized",
     pickupBy: NOW.toISOString(),
     createdAt: NOW.toISOString(),
-    paypalOrderId: null,
-    paypalAuthorizationId: null,
     payerId: null,
     pickupCode: "1234",
     orderNumber: 1,

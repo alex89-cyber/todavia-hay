@@ -298,17 +298,6 @@ export interface StallStore {
   ): Promise<Reservation | null>;
 
   /**
-   * Función heredada de PayPal.
-   * Se conserva temporalmente para mantener
-   * compatibilidad con código anterior.
-   */
-  setPayPalOrder(
-    slug: string,
-    id: string,
-    orderId: string,
-  ): Promise<void>;
-
-  /**
    * Confirma la reservación.
    *
    * En el flujo nuevo, authorized significa
@@ -317,7 +306,6 @@ export interface StallStore {
   markAuthorized(
     slug: string,
     id: string,
-    authorizationId: string,
     payerId: string | null,
   ): Promise<void>;
 

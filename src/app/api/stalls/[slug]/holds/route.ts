@@ -7,7 +7,7 @@ import { HOLDS_COOKIE } from "@/lib/stall";
 import { store } from "@/lib/store";
 import { currentAccount } from "@/lib/auth/server";
 
-// The customer's own orders, from the cookie set when PayPal approved them.
+// The customer's own orders, from the cookie set when they reserved.
 // GET  /api/stalls/:slug/holds?lang=es            → { holds }
 // POST /api/stalls/:slug/holds { action: "confirm", id }
 // POST /api/stalls/:slug/holds { action: "push", id, lang, subscription }

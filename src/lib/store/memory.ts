@@ -658,10 +658,6 @@ export const memoryStore: StallStore & { reset(slug: string): Promise<StallState
       pickupBy: pickupBy.toISOString(),
       createdAt: new Date().toISOString(),
 
-      // Campos históricos conservados.
-      // Los pedidos nuevos no necesitan PayPal.
-      paypalOrderId: null,
-      paypalAuthorizationId: null,
       payerId: null,
     };
 
@@ -689,32 +685,12 @@ export const memoryStore: StallStore & { reset(slug: string): Promise<StallState
   },
 
   // ========================================
-  // COMPATIBILIDAD CON PEDIDOS ANTIGUOS
-  // ========================================
-
-  async setPayPalOrder(
-    slug,
-    id,
-    orderId
-  ) {
-    const r = reservation(
-      must(slug),
-      id
-    );
-
-    if (r) {
-      r.paypalOrderId = orderId;
-    }
-  },
-
-  // ========================================
   // CONFIRMAR PEDIDO SIN COBRAR
   // ========================================
 
   async markAuthorized(
     slug,
     id,
-    authorizationId,
     payerId
   ) {
     const s = must(slug);
@@ -727,10 +703,6 @@ export const memoryStore: StallStore & { reset(slug: string): Promise<StallState
     // Authorized significa pedido confirmado.
     // No significa que ya esté pagado.
     r.status = "authorized";
-
-    // Se conservan campos históricos.
-    r.paypalAuthorizationId =
-      authorizationId;
 
     r.payerId = payerId;
 
@@ -773,6 +745,7 @@ export const memoryStore: StallStore & { reset(slug: string): Promise<StallState
       method,
       totalCents: r.totalCents,
       at: new Date().toISOString(),
+      reservationId: r.id,
     });
 
     // Mantener recompensas del cliente.

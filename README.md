@@ -26,7 +26,7 @@ Producción: https://todavia-hay.onrender.com · Código privado, todos los dere
 
 Next.js 16 (App Router, React 19) · Tailwind CSS 4 · Vercel AI SDK con Gemini · Supabase (Postgres con RLS, funciones PL/pgSQL para el inventario, Auth y Storage) · Web Push (VAPID) · Vitest · Render.
 
-Los apartados con pago usan hoy PayPal (autorizar y cobrar al entregar, `src/lib/paypal.ts`); el cobro para el piloto está por definirse.
+Los apartados se pagan al recoger: el negocio toca Entregado, revisa el código del cliente y anota si pagó en efectivo, con tarjeta o por transferencia.
 
 ## Correr en local
 
@@ -46,14 +46,13 @@ Sin claves corre con datos en memoria y un puesto de ejemplo, y el panel queda a
 | `REWARD_PIN_SECRET` | PIN de canje de sellos (32+ caracteres) |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | Agente del chat y preguntas del corte (Gemini) |
 | `GEMINI_MODEL`, `STUDIO_GEMINI_MODEL` | Opcional: otro modelo de Gemini |
-| `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_ENV` | Apartados con PayPal (sandbox salvo `PAYPAL_ENV=live`) |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Avisos push (`npx web-push generate-vapid-keys`) |
 | `RESEND_API_KEY`, `CONTACT_FROM_EMAIL` | Formulario de contacto de la landing |
 | `OWNER_PIN` | Solo sin cuentas: PIN del panel |
 
 ## Base de datos
 
-Migraciones en `supabase/migrations`, en orden (0001 a 0016). Para un proyecto nuevo de Supabase basta con correrlas en el SQL Editor; `0002` crea el puesto de ejemplo Birria Doña Lupe.
+Migraciones en `supabase/migrations`, en orden (0001 a 0017). Para un proyecto nuevo de Supabase basta con correrlas en el SQL Editor; `0002` crea el puesto de ejemplo Birria Doña Lupe.
 
 ## Scripts
 

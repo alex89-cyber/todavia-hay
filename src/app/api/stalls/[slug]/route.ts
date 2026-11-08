@@ -9,7 +9,6 @@ import {
   publicSnapshot,
 } from "@/lib/stall";
 
-import { PayPalError } from "@/lib/paypal";
 import { notifyWaiting } from "@/lib/push";
 
 import {
@@ -953,9 +952,8 @@ export async function POST(
     // ======================================
     // ENTREGAR O CANCELAR APARTADO
     //
-    // Esta operación conserva el flujo
-    // original de PayPal y códigos de
-    // entrega de los apartados.
+    // Revisa el código de entrega
+    // de los apartados.
     // ======================================
 
     case "ready": {
@@ -1016,12 +1014,7 @@ export async function POST(
         );
 
         return Response.json(
-          {
-            error:
-              e instanceof PayPalError
-                ? "paypal"
-                : "failed",
-          },
+          { error: "failed" },
           { status: 502 },
         );
       }

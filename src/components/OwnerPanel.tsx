@@ -445,7 +445,7 @@ export function OwnerPanel({
         }}
         onReady={async (id) => {
           const r = await act({ action: "ready", reservationId: id });
-          setToast(r?.error ? { kind: "bad", text: o.paypalError } : { kind: "ok", text: o.readyDone });
+          setToast(r?.error ? { kind: "bad", text: o.actionError } : { kind: "ok", text: o.readyDone });
         }}
 
         onDeliver={async (id, proof, method) => {
@@ -527,7 +527,7 @@ export function OwnerPanel({
           if (r?.error) {
             setToast({
               kind: "bad",
-              text: o.paypalError,
+              text: o.actionError,
             });
           } else if (r) {
             setToast({
@@ -1245,17 +1245,6 @@ function CashUpDialog({
             Transferencia:{" "}
             <b>{fmt(cashUp.byMethod.transfer)}</b>
           </span>
-
-          {cashUp.byMethod.paypal > 0 && (
-            <span>
-              PayPal:{" "}
-              <b>
-                {fmt(
-                  cashUp.byMethod.paypal,
-                )}
-              </b>
-            </span>
-          )}
         </div>
 
         <p className="mt-3 text-sm text-muted">
