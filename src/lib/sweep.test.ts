@@ -43,14 +43,14 @@ describe("sweep", () => {
     vi.clearAllMocks();
   });
 
-  it("charges an order nobody picked up after the tolerance", async () => {
+  // Pay at pickup: nothing is held, so a no-show is just released, never charged.
+  it("releases an order nobody picked up after the tolerance, without charging", async () => {
     const now = new Date();
     const id = await reserved(new Date(now.getTime() - 60 * MIN), "asap", new Date(now.getTime() - 30 * MIN));
     await sweep((await store.get(SLUG))!, now);
     const r = await store.getReservation(SLUG, id);
-    expect(r?.status).toBe("captured");
-    expect(r?.noShow).toBe(true);
-    expect(paypal.captured).toContain(`AUTH-${id}`);
+    expect(r?.status).toBe("expired");
+    expect(paypal.captured).not.toContain(`AUTH-${id}`);
   });
 
   it("cancels for free an order scheduled hours ahead that was never confirmed", async () => {
@@ -60,7 +60,6 @@ describe("sweep", () => {
     await sweep((await store.get(SLUG))!, now);
     const r = await store.getReservation(SLUG, id);
     expect(r?.status).toBe("expired");
-    expect(paypal.voided).toContain(`AUTH-${id}`);
     expect(paypal.captured).not.toContain(`AUTH-${id}`);
   });
 

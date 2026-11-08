@@ -78,7 +78,8 @@ describe("pickupOptions", () => {
     expect(o.asap.available).toBe(true);
     // 14:02 + 20 min notice = 14:22 → first 15-minute slot is 14:30, last is 18:00.
     expect(hhmm(o.slots[0], TZ)).toBe("14:30");
-    expect(hhmm(o.slots.at(-1)!, TZ)).toBe("18:00");
+    // Closes at 18:00; no slots in the last CLOSING_BUFFER_MINUTES (20) → 17:30.
+    expect(hhmm(o.slots.at(-1)!, TZ)).toBe("17:30");
   });
 
   it("is closed outside opening hours, and says when it opens", () => {
@@ -141,7 +142,7 @@ describe("resolvePickup", () => {
       return r.ok ? "ok" : r.reason;
     };
     expect(why("14:10")).toBe("too_soon");
-    expect(why("19:00")).toBe("outside_hours");
+    expect(why("19:00")).toBe("closing");
     expect(why("8:30")).toBe("outside_hours");
     expect(why("25:00")).toBe("bad_time");
     expect(why("15:00", stall({ isOpen: false }))).toBe("closed");
