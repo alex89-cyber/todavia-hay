@@ -161,7 +161,7 @@
     "noCustomer": "No encontré a nadie. Escribe su teléfono completo para crear su tarjeta.",
     "noCards": "Todavía no hay tarjetas. Escribe el teléfono de un cliente para darle su primer sello.",
     "addStamp": "+1 sello",
-    "studioLink": "Corte en AG Studio",
+    "studioLink": "Corte de caja",
     "studioOpen": "Ver el corte completo con gráficas",
     "pinLabel": "PIN del dueño",
     "pinHint": "Escribe tu PIN para entrar al panel.",
@@ -192,7 +192,7 @@
     "title": "Corte de caja",
     "back": "← Panel",
     "refresh": "Actualizar",
-    "hint": "Mueve o cambia cualquier gráfica, o pregúntale al asistente de la izquierda.",
+    "hint": "Ventas, gráficas y gastos del corte. Abajo puedes descargar los datos o hacerle preguntas a la IA.",
     "noAi": "El asistente de IA no está configurado."
   },
   "menu": {

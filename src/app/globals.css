@@ -45,7 +45,7 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* "Ticket del corte", the custom AG Studio widget on the cash-up page. */
+/* "Ticket del corte" on the cash-up page (CashUpDashboard). */
 .th-ticket {
   height: 100%;
   overflow: auto;

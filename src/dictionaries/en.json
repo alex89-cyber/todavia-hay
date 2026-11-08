@@ -161,7 +161,7 @@
     "noCustomer": "No one found. Type their full phone to create a card.",
     "noCards": "No cards yet. Type a customer's phone to give their first stamp.",
     "addStamp": "+1 stamp",
-    "studioLink": "Cash-up in AG Studio",
+    "studioLink": "Cash-up",
     "studioOpen": "See the full cash-up with charts",
     "pinLabel": "Owner PIN",
     "pinHint": "Enter your PIN to open the panel.",
@@ -192,7 +192,7 @@
     "title": "Cash-up",
     "back": "← Panel",
     "refresh": "Refresh",
-    "hint": "Move or change any chart, or ask the assistant on the left.",
+    "hint": "Sales, charts and expenses for the cash-up. Below you can download the data or ask the AI.",
     "noAi": "The AI assistant isn't set up."
   },
   "menu": {
