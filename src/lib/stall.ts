@@ -1,6 +1,7 @@
 
 import { forecast, type SaleEvent } from "./forecast";
 import type { GalleryPhoto } from "./gallery";
+
 import {
   type Dish,
   type Ingredient,
@@ -12,7 +13,13 @@ import {
 // VENTAS Y RESERVACIONES
 // ==========================================
 
-export type PaymentMethod = "cash" | "card" | "paypal";
+// Métodos de pago aceptados.
+// PayPal permanece para ventas históricas.
+export type PaymentMethod =
+  | "cash"
+  | "card"
+  | "transfer"
+  | "paypal";
 
 export type Sale = {
   id: string;
@@ -37,32 +44,44 @@ export type Reservation = {
   status: ReservationStatus;
   pickupBy: string;
   createdAt: string;
+
+  // Campos heredados de PayPal.
   paypalOrderId: string | null;
   paypalAuthorizationId: string | null;
   payerId: string | null;
 
-  /** Código de cuatro dígitos para recoger el pedido. */
+  /** Código de cuatro dígitos para recoger. */
   pickupCode: string | null;
 
-  /** Número de pedido público. */
+  /** Número público del pedido. */
   orderNumber: number | null;
 
-  /** "asap" = para ahorita; "scheduled" = para una hora elegida. */
+  /** Modalidad de recogida. */
   pickupMode: "asap" | "scheduled";
-  /** Hora elegida (programado) o estimada de listo (ahorita). */
+
+  /** Hora estimada o programada. */
   pickupAt: string | null;
-  /** El cliente confirmó que sí va (programados con más de 1 hora). */
+
+  /** Confirmación del cliente. */
   confirmedAt: string | null;
-  /** El negocio lo marcó "Listo". */
+
+  /** Hora en que el pedido quedó listo. */
   readyAt: string | null;
-  /** Se cobró porque nadie lo recogió. */
+
+  /** Indica si el cliente no recogió. */
   noShow: boolean;
-  /** Avisos ya enviados, para no repetirlos. */
+
+  /** Notificaciones enviadas. */
   confirmAskedAt: string | null;
   prepAlertedAt: string | null;
-  /** La cuenta que apartó (con cuentas activadas). */
+
+  /** Cuenta del cliente que reservó. */
   customerId: string | null;
 };
+
+// ==========================================
+// NIP Y DATOS DEL CLIENTE
+// ==========================================
 
 export const HIDDEN_CODE = "****";
 
@@ -73,6 +92,7 @@ const plain = (x: string) =>
     .toLowerCase()
     .trim();
 
+// Mostrar nombre abreviado.
 export function shortName(name: string) {
   const [first, ...rest] = name.trim().split(/\s+/);
 
@@ -81,6 +101,7 @@ export function shortName(name: string) {
     : (first ?? "");
 }
 
+// Comparar apellido del cliente.
 export function lastNameMatches(
   name: string,
   typed: string,
@@ -99,6 +120,7 @@ export function lastNameMatches(
   );
 }
 
+// Generar número consecutivo del pedido.
 export function nextOrderNumber(
   reservations: Reservation[],
   openedAt: string | null,
@@ -116,9 +138,11 @@ export function nextOrderNumber(
   );
 }
 
+// Estados de reservaciones activas.
 export const isActive = (r: Reservation) =>
   r.status === "held" || r.status === "authorized";
 
+// Generar NIP de cuatro dígitos.
 export function newPickupCode(
   reservations: Reservation[],
 ) {
@@ -137,6 +161,7 @@ export function newPickupCode(
   }
 }
 
+// Cookies utilizadas por el sistema.
 export const HOLDS_COOKIE = "th_holds";
 export const PAYER_COOKIE = "th_payer";
 
@@ -158,6 +183,7 @@ export type Loyalty = {
   cards: StampCard[];
 };
 
+// Identificar tarjeta por teléfono.
 export function phoneCardId(
   phone: string,
 ): string | null {
@@ -168,6 +194,7 @@ export function phoneCardId(
     : null;
 }
 
+// Mostrar identificación de tarjeta.
 export function cardLabel(c: {
   id: string;
   label: string | null;
@@ -215,27 +242,34 @@ export type StallTheme = {
   roundedCards?: boolean;
   roundedButtons?: boolean;
 
-  /** Color de fondo del cuadro informativo. */
+  /** Fondo del cuadro informativo. */
   headerBackgroundColor?: string;
 
-  /** Color de texto del cuadro informativo. */
+  /** Texto del cuadro informativo. */
   headerTextColor?: string;
 
   /** Ubicación de la portada. */
   coverPosition?: StallCoverPosition;
 };
 
-/** Reglas de "Recoger" que pone cada negocio. */
+// ==========================================
+// CONFIGURACIÓN DE RECOGIDA
+// ==========================================
+
 export type PickupSettings = {
-  /** "Para ahorita": listo en aprox. estos minutos. */
+  /** Tiempo estimado para pedidos inmediatos. */
   asapMinutes: number;
-  /** Aviso al negocio: minutos antes de la hora elegida. También es la anticipación mínima. */
+
+  /** Aviso anticipado al negocio. */
   noticeMinutes: number;
-  /** Cada cuánto hay horarios. */
+
+  /** Intervalo entre horarios disponibles. */
   slotMinutes: number;
-  /** Máximo de pedidos por horario; null = sin límite. */
+
+  /** Máximo de pedidos por horario. */
   maxPerSlot: number | null;
-  /** Minutos de espera después de la hora antes de cobrar. */
+
+  /** Tolerancia después de la hora programada. */
   toleranceMinutes: number;
 };
 
@@ -257,11 +291,11 @@ export type StallSettings = {
   coverUrl?: string | null;
   galleryUrls?: string[];
 
-  // NUEVO: GALERÍA CON PIES DE FOTO
+  // GALERÍA CON PIES DE FOTO
 
   galleryPhotos?: GalleryPhoto[];
 
-  // NUEVO: ORDEN Y VISIBILIDAD DE SECCIONES
+  // ORDEN Y VISIBILIDAD DE SECCIONES
 
   sectionOrder?: {
     id:
@@ -492,7 +526,6 @@ export function publicSnapshot(
       nameEn: d.nameEn,
 
       imageUrl: d.imageUrl ?? null,
-
       priceCents: d.priceCents,
 
       portions: s.isOpen
@@ -613,8 +646,7 @@ export function ownerView(
       const a = avail.get(d.id);
       const f = fc.get(d.id);
 
-      const portions =
-        a?.portions ?? 0;
+      const portions = a?.portions ?? 0;
 
       return {
         id: d.id,
@@ -622,8 +654,8 @@ export function ownerView(
         nameEn: d.nameEn,
 
         imageUrl: d.imageUrl ?? null,
-
         priceCents: d.priceCents,
+
         portions,
 
         recipe: d.recipe,
@@ -681,12 +713,15 @@ export type CashUp = {
 export function cashUp(
   s: StallState,
 ): CashUp {
+  // Inicializar los cuatro métodos.
+  // PayPal solo se conserva para el historial.
   const byMethod: Record<
     PaymentMethod,
     number
   > = {
     cash: 0,
     card: 0,
+    transfer: 0,
     paypal: 0,
   };
 
@@ -705,6 +740,7 @@ export function cashUp(
     ]),
   );
 
+  // Recorrer todas las ventas.
   for (const sale of s.sales) {
     byMethod[sale.method] +=
       sale.totalCents;
@@ -729,13 +765,18 @@ export function cashUp(
     }
   }
 
+  // Calcular el total de todos los pagos.
+  // Se incluyen también las ventas históricas.
+  const totalCents =
+    byMethod.cash +
+    byMethod.card +
+    byMethod.transfer +
+    byMethod.paypal;
+
   return {
     salesCount: s.sales.length,
 
-    totalCents:
-      byMethod.cash +
-      byMethod.card +
-      byMethod.paypal,
+    totalCents,
 
     byMethod,
 

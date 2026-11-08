@@ -30,19 +30,23 @@ import type {
   PushTarget,
 } from "./types";
 
-// In-process store for the demo and for running without Supabase.
-// State lives on globalThis so it survives hot reloads in dev.
-// It resets when the server process restarts.
+// ==========================================
+// TODAVÍA HAY - ALMACENAMIENTO EN MEMORIA
+// ==========================================
+
+// Este almacenamiento sirve para demostraciones
+// y para ejecutar el proyecto sin Supabase.
+// Los datos se reinician al reiniciar el servidor.
 
 const DEMO_SLUG = "birria-dona-lupe";
 
-/**
- * A stall that opened earlier and has been selling,
- * so the forecast has data.
- */
+// ==========================================
+// CREAR DATOS DE DEMOSTRACIÓN
+// ==========================================
+
 export function seedDemo(now = new Date()): StallState {
   const openedAt = new Date(
-    now.getTime() - DEMO_OPENED_MINUTES_AGO * 60_000,
+    now.getTime() - DEMO_OPENED_MINUTES_AGO * 60_000
   );
 
   const sales: Sale[] = [];
@@ -62,7 +66,7 @@ export function seedDemo(now = new Date()): StallState {
     ingredients = deduct(
       lines,
       demoDishes,
-      ingredients,
+      ingredients
     );
 
     sales.push({
@@ -71,10 +75,10 @@ export function seedDemo(now = new Date()): StallState {
       method: seed.method,
       totalCents: orderTotalCents(
         lines,
-        demoDishes,
+        demoDishes
       ),
       at: new Date(
-        now.getTime() - seed.minutesAgo * 60_000,
+        now.getTime() - seed.minutesAgo * 60_000
       ).toISOString(),
     });
   });
@@ -102,7 +106,7 @@ export function seedDemo(now = new Date()): StallState {
       demoIngredients.map((i) => [
         i.id,
         i.stock,
-      ]),
+      ])
     ),
 
     sales,
@@ -116,11 +120,13 @@ export function seedDemo(now = new Date()): StallState {
       cards: [],
     },
 
-    // Los negocios existentes pueden no tener
-    // una configuración personalizada todavía.
     settings: undefined,
   };
 }
+
+// ==========================================
+// ALMACENAMIENTO GLOBAL
+// ==========================================
 
 const g = globalThis as unknown as {
   __stalls?: Map<string, StallState>;
@@ -138,8 +144,6 @@ const stalls = (
   ])
 );
 
-// Kept apart from the stall so "Reiniciar demo"
-// does not wipe customers' cards.
 const cards = (
   g.__cards ??= new Map<
     string,
@@ -148,35 +152,38 @@ const cards = (
 );
 
 const watches = (
-  g.__watches ??= new Map<
-    string,
-    Watch[]
-  >()
+  g.__watches ??= new Map<string, Watch[]>()
 );
 
-const pushes = (g.__pushes ??= new Map<string, PushTarget[]>());
+const pushes = (
+  g.__pushes ??= new Map<string, PushTarget[]>()
+);
+
+// ==========================================
+// TARJETAS DE RECOMPENSAS
+// ==========================================
 
 const cardKey = (
   slug: string,
-  payerId: string,
+  payerId: string
 ) => `${slug}\u0000${payerId}`;
 
 const stampsOf = (
   slug: string,
-  id: string,
+  id: string
 ) =>
   cards.get(
-    cardKey(slug, id),
+    cardKey(slug, id)
   )?.stamps ?? 0;
 
 function stamp(
   slug: string,
   id: string,
   label: string | null,
-  delta: number,
+  delta: number
 ): number {
   const cur = cards.get(
-    cardKey(slug, id),
+    cardKey(slug, id)
   );
 
   const next = {
@@ -189,29 +196,26 @@ function stamp(
 
   cards.set(
     cardKey(slug, id),
-    next,
+    next
   );
 
   return next.stamps;
 }
 
-/**
- * The stall with its payers' current stamps
- * and the recent cards filled in.
- */
+// ==========================================
+// CONSULTAR TARJETAS
+// ==========================================
+
 function withStamps(
-  s: StallState,
+  s: StallState
 ): StallState {
-  const stamps: Record<
-    string,
-    number
-  > = {};
+  const stamps: Record<string, number> = {};
 
   for (const r of s.reservations) {
     if (r.payerId) {
       stamps[r.payerId] = stampsOf(
         s.slug,
-        r.payerId,
+        r.payerId
       );
     }
   }
@@ -219,29 +223,24 @@ function withStamps(
   const recent = [
     ...cards.values(),
   ]
-    .filter(
-      (c) => c.slug === s.slug,
-    )
-    .sort(
-      (a, b) =>
-        b.updatedAt.localeCompare(
-          a.updatedAt,
-        ),
+    .filter((c) => c.slug === s.slug)
+    .sort((a, b) =>
+      b.updatedAt.localeCompare(
+        a.updatedAt
+      )
     )
     .slice(0, 50)
-    .map(
-      ({
-        id,
-        label,
-        stamps,
-        updatedAt,
-      }) => ({
-        id,
-        label,
-        stamps,
-        updatedAt,
-      }),
-    );
+    .map(({
+      id,
+      label,
+      stamps,
+      updatedAt,
+    }) => ({
+      id,
+      label,
+      stamps,
+      updatedAt,
+    }));
 
   s.loyalty = {
     ...s.loyalty,
@@ -252,14 +251,16 @@ function withStamps(
   return s;
 }
 
-function must(
-  slug: string,
-): StallState {
+// ==========================================
+// FUNCIONES AUXILIARES
+// ==========================================
+
+function must(slug: string): StallState {
   const s = stalls.get(slug);
 
   if (!s) {
     throw new Error(
-      `Unknown stall ${slug}`,
+      `Unknown stall ${slug}`
     );
   }
 
@@ -268,83 +269,76 @@ function must(
 
 function reservation(
   s: StallState,
-  id: string,
+  id: string
 ): Reservation | undefined {
   return s.reservations.find(
-    (r) => r.id === id,
+    (r) => r.id === id
   );
 }
 
-function save(
-  s: StallState,
-): StallState {
-  s.updatedAt =
-    new Date().toISOString();
+function save(s: StallState): StallState {
+  s.updatedAt = new Date().toISOString();
 
-  stalls.set(
-    s.slug,
-    s,
-  );
+  stalls.set(s.slug, s);
 
   return s;
 }
 
-/* =========================================
-   MEMORY STORE
-   ========================================= */
+// ==========================================
+// ALMACENAMIENTO PRINCIPAL
+// ==========================================
 
 export const memoryStore: StallStore = {
+
+  // ========================================
+  // OBTENER NEGOCIO
+  // ========================================
+
   async get(slug) {
     const s = stalls.get(slug);
 
-    return s
-      ? withStamps(s)
-      : null;
+    return s ? withStamps(s) : null;
   },
 
-  /* =======================================
-     ABRIR JORNADA
-     ======================================= */
+  // ========================================
+  // ABRIR JORNADA
+  // ========================================
 
   async open(slug, counts) {
     const s = must(slug);
 
-    s.ingredients =
-      s.ingredients.map((i) => ({
+    s.ingredients = s.ingredients.map(
+      (i) => ({
         ...i,
         stock: Math.max(
           0,
-          counts[i.id] ?? i.stock,
+          counts[i.id] ?? i.stock
         ),
-      }));
-
-    s.openingCount =
-      Object.fromEntries(
-        s.ingredients.map((i) => [
-          i.id,
-          i.stock,
-        ]),
-      );
-
-    s.dishes = s.dishes.map(
-      (d) => ({
-        ...d,
-        soldOut: false,
-      }),
+      })
     );
+
+    s.openingCount = Object.fromEntries(
+      s.ingredients.map((i) => [
+        i.id,
+        i.stock,
+      ])
+    );
+
+    s.dishes = s.dishes.map((d) => ({
+      ...d,
+      soldOut: false,
+    }));
 
     s.sales = [];
     s.isOpen = true;
-
-    s.openedAt =
-      new Date().toISOString();
+    s.openedAt = new Date().toISOString();
 
     return save(s);
   },
 
-  /* =======================================
-     CERRAR JORNADA
-     ======================================= */
+  // ========================================
+  // CERRAR JORNADA
+  // ========================================
 
   async close(slug) {
     const s = must(slug);
@@ -359,14 +353,14 @@ export const memoryStore: StallStore = {
     };
   },
 
-  /* =======================================
-     REGISTRAR VENTA
-     ======================================= */
+  // ========================================
+  // REGISTRAR VENTA DIRECTA
+  // ========================================
 
   async recordSale(
     slug,
     lines,
-    method,
+    method
   ) {
     const s = must(slug);
 
@@ -380,7 +374,7 @@ export const memoryStore: StallStore = {
     const check = canFulfill(
       lines,
       s.dishes,
-      s.ingredients,
+      s.ingredients
     );
 
     if (!check.ok) {
@@ -394,18 +388,17 @@ export const memoryStore: StallStore = {
     s.ingredients = deduct(
       lines,
       s.dishes,
-      s.ingredients,
+      s.ingredients
     );
 
     s.sales.push({
       id: crypto.randomUUID(),
       lines,
       method,
-      totalCents:
-        orderTotalCents(
-          lines,
-          s.dishes,
-        ),
+      totalCents: orderTotalCents(
+        lines,
+        s.dishes
+      ),
       at: new Date().toISOString(),
     });
 
@@ -415,33 +408,29 @@ export const memoryStore: StallStore = {
     };
   },
 
-  /* =======================================
-     MARCAR PLATILLO AGOTADO
-     ======================================= */
+  // ========================================
+  // MARCAR PRODUCTO AGOTADO
+  // ========================================
 
   async setSoldOut(
     slug,
     dishId,
-    soldOut,
+    soldOut
   ) {
     const s = must(slug);
 
-    s.dishes = s.dishes.map(
-      (d) =>
-        d.id === dishId
-          ? {
-              ...d,
-              soldOut,
-            }
-          : d,
+    s.dishes = s.dishes.map((d) =>
+      d.id === dishId
+        ? { ...d, soldOut }
+        : d
     );
 
     return save(s);
   },
 
-  /* =======================================
-     REABASTECER INVENTARIO
-     ======================================= */
+  // ========================================
+  // REABASTECER INVENTARIO
+  // ========================================
 
   async restock(slug, adds) {
     const s = must(slug);
@@ -455,26 +444,18 @@ export const memoryStore: StallStore = {
 
     const added = new Set(
       Object.entries(adds)
-        .filter(
-          ([, n]) => n > 0,
-        )
-        .map(
-          ([id]) => id,
-        ),
+        .filter(([, n]) => n > 0)
+        .map(([id]) => id)
     );
 
-    s.ingredients =
-      s.ingredients.map(
-        (i) =>
-          added.has(i.id)
-            ? {
-                ...i,
-                stock:
-                  i.stock +
-                  adds[i.id],
-              }
-            : i,
-      );
+    s.ingredients = s.ingredients.map((i) =>
+      added.has(i.id)
+        ? {
+            ...i,
+            stock: i.stock + adds[i.id],
+          }
+        : i
+    );
 
     for (const id of added) {
       s.openingCount[id] =
@@ -482,173 +463,110 @@ export const memoryStore: StallStore = {
         adds[id];
     }
 
-    s.dishes = s.dishes.map(
-      (d) =>
-        d.recipe.some(
-          (r) =>
-            added.has(
-              r.ingredientId,
-            ),
-        )
-          ? {
-              ...d,
-              soldOut: false,
-            }
-          : d,
+    s.dishes = s.dishes.map((d) =>
+      d.recipe.some((r) =>
+        added.has(r.ingredientId)
+      )
+        ? { ...d, soldOut: false }
+        : d
     );
 
     return {
       ok: true,
-      state: withStamps(
-        save(s),
-      ),
+      state: withStamps(save(s)),
     };
   },
 
-  /* =======================================
-     GUARDAR MENÚ
-     ======================================= */
+  // ========================================
+  // GUARDAR MENÚ
+  // ========================================
 
-  async saveMenu(
-    slug,
-    menu,
-  ) {
+  async saveMenu(slug, menu) {
     const s = must(slug);
 
-    const ids = new Map<
-      string,
-      string
-    >();
+    const ids = new Map<string, string>();
 
     const stock = new Map(
-      s.ingredients.map(
-        (i) => [
-          i.id,
-          i,
-        ],
-      ),
+      s.ingredients.map((i) => [
+        i.id,
+        i,
+      ])
     );
 
-    s.ingredients =
-      menu.ingredients.map(
-        (i) => {
-          const id = stock.has(i.key)
-            ? i.key
-            : crypto.randomUUID();
+    s.ingredients = menu.ingredients.map(
+      (i) => {
+        const id = stock.has(i.key)
+          ? i.key
+          : crypto.randomUUID();
 
-          ids.set(
-            i.key,
-            id,
-          );
+        ids.set(i.key, id);
 
-          return {
-            id,
-            name: i.name,
-            unit: i.unit,
-            stock:
-              stock.get(
-                i.key,
-              )?.stock ?? 0,
-          };
-        },
-      );
+        return {
+          id,
+          name: i.name,
+          unit: i.unit,
+          stock: stock.get(i.key)?.stock ?? 0,
+        };
+      }
+    );
 
     const old = new Map(
-      s.dishes.map(
-        (d) => [
-          d.id,
-          d,
-        ],
+      s.dishes.map((d) => [
+        d.id,
+        d,
+      ])
+    );
+
+    s.dishes = menu.dishes.map((d) => ({
+      id:
+        d.id && old.has(d.id)
+          ? d.id
+          : crypto.randomUUID(),
+
+      nameEs: d.nameEs,
+      nameEn: d.nameEn,
+      imageUrl: d.imageUrl,
+      priceCents: d.priceCents,
+
+      soldOut:
+        (d.id && old.get(d.id)?.soldOut) ||
+        false,
+
+      recipe: d.recipe.flatMap((r) =>
+        ids.has(r.ingredient)
+          ? [
+              {
+                ingredientId:
+                  ids.get(r.ingredient)!,
+                qty: r.qty,
+              },
+            ]
+          : []
       ),
-    );
+    }));
 
-    s.dishes =
-      menu.dishes.map(
-        (d) => ({
-          id:
-            d.id &&
-            old.has(d.id)
-              ? d.id
-              : crypto.randomUUID(),
-
-          nameEs: d.nameEs,
-          nameEn: d.nameEn,
-
-          // Conservar las fotografías del menú.
-          imageUrl:
-            d.imageUrl,
-
-          priceCents:
-            d.priceCents,
-
-          soldOut:
-            (d.id &&
-              old.get(
-                d.id,
-              )?.soldOut) ||
-            false,
-
-          recipe:
-            d.recipe.flatMap(
-              (r) =>
-                ids.has(
-                  r.ingredient,
-                )
-                  ? [
-                      {
-                        ingredientId:
-                          ids.get(
-                            r.ingredient,
-                          )!,
-                        qty: r.qty,
-                      },
-                    ]
-                  : [],
-            ),
-        }),
-      );
-
-    return withStamps(
-      save(s),
-    );
+    return withStamps(save(s));
   },
 
-  /* =======================================
-     GUARDAR PERSONALIZACIÓN
-     ======================================= */
+  // ========================================
+  // GUARDAR CONFIGURACIÓN
+  // ========================================
 
-  async saveSettings(
-    slug,
-    input,
-  ) {
+  async saveSettings(slug, input) {
     const s = must(slug);
 
-    // Actualizar el nombre del negocio.
     s.name = input.name;
 
-    // Guardar la configuración personalizada.
-    // Se crea una copia para evitar modificarla
-    // accidentalmente desde otro componente.
     s.settings = structuredClone(
-      input.settings,
+      input.settings
     );
 
-    // No se modifican:
-    // - Ventas
-    // - Inventario
-    // - Recetas
-    // - Reservaciones
-    // - PayPal
-    // - Tarjetas de sellos
-
-    return withStamps(
-      save(s),
-    );
+    return withStamps(save(s));
   },
 
-  /* =======================================
-     REINICIAR DEMOSTRACIÓN
-     ======================================= */
+  // ========================================
+  // REINICIAR DEMOSTRACIÓN
+  // ========================================
 
   async reset(slug) {
     if (slug !== DEMO_SLUG) {
@@ -656,32 +574,26 @@ export const memoryStore: StallStore = {
     }
 
     const current = must(slug);
-
     const fresh = seedDemo();
 
-    // Reiniciar las operaciones de la demo
-    // sin borrar la identidad personalizada.
     fresh.name = current.name;
 
-    fresh.settings =
-      current.settings
-        ? structuredClone(
-            current.settings,
-          )
-        : undefined;
+    fresh.settings = current.settings
+      ? structuredClone(current.settings)
+      : undefined;
 
     return save(fresh);
   },
 
-  /* =======================================
-     RESERVACIONES
-     ======================================= */
+  // ========================================
+  // CREAR RESERVACIÓN
+  // ========================================
 
   async reserve(
     slug,
     customerName,
     lines,
-    pickupBy,
+    pickupBy
   ) {
     const s = must(slug);
 
@@ -695,28 +607,31 @@ export const memoryStore: StallStore = {
     const check = canFulfill(
       lines,
       s.dishes,
-      s.ingredients,
+      s.ingredients
     );
 
     if (!check.ok) {
       return {
         ok: false,
         reason: "short",
-        short:
-          check.shortIngredientIds,
+        short: check.shortIngredientIds,
       };
     }
 
     s.ingredients = deduct(
       lines,
       s.dishes,
-      s.ingredients,
+      s.ingredients
     );
 
     const r: Reservation = {
       id: crypto.randomUUID(),
       customerName,
-      pickupCode: newPickupCode(s.reservations),
+
+      pickupCode: newPickupCode(
+        s.reservations
+      ),
+
       pickupMode: "asap",
       pickupAt: null,
       confirmedAt: null,
@@ -725,23 +640,25 @@ export const memoryStore: StallStore = {
       confirmAskedAt: null,
       prepAlertedAt: null,
       customerId: null,
-      orderNumber: nextOrderNumber(s.reservations, s.openedAt),
+
+      orderNumber: nextOrderNumber(
+        s.reservations,
+        s.openedAt
+      ),
+
       lines,
 
-      totalCents:
-        orderTotalCents(
-          lines,
-          s.dishes,
-        ),
+      totalCents: orderTotalCents(
+        lines,
+        s.dishes
+      ),
 
       status: "held",
+      pickupBy: pickupBy.toISOString(),
+      createdAt: new Date().toISOString(),
 
-      pickupBy:
-        pickupBy.toISOString(),
-
-      createdAt:
-        new Date().toISOString(),
-
+      // Campos históricos conservados.
+      // Los pedidos nuevos no necesitan PayPal.
       paypalOrderId: null,
       paypalAuthorizationId: null,
       payerId: null,
@@ -753,34 +670,35 @@ export const memoryStore: StallStore = {
 
     return {
       ok: true,
-      reservation: {
-        ...r,
-      },
+      reservation: { ...r },
     };
   },
 
-  async getReservation(
-    slug,
-    id,
-  ) {
+  // ========================================
+  // OBTENER RESERVACIÓN
+  // ========================================
+
+  async getReservation(slug, id) {
     const r = reservation(
       must(slug),
-      id,
+      id
     );
 
-    return r
-      ? { ...r }
-      : null;
+    return r ? { ...r } : null;
   },
+
+  // ========================================
+  // COMPATIBILIDAD CON PEDIDOS ANTIGUOS
+  // ========================================
 
   async setPayPalOrder(
     slug,
     id,
-    orderId,
+    orderId
   ) {
     const r = reservation(
       must(slug),
-      id,
+      id
     );
 
     if (r) {
@@ -788,27 +706,28 @@ export const memoryStore: StallStore = {
     }
   },
 
+  // ========================================
+  // CONFIRMAR PEDIDO SIN COBRAR
+  // ========================================
+
   async markAuthorized(
     slug,
     id,
     authorizationId,
-    payerId,
+    payerId
   ) {
     const s = must(slug);
+    const r = reservation(s, id);
 
-    const r = reservation(
-      s,
-      id,
-    );
-
-    if (
-      r?.status !== "held"
-    ) {
+    if (r?.status !== "held") {
       return;
     }
 
+    // Authorized significa pedido confirmado.
+    // No significa que ya esté pagado.
     r.status = "authorized";
 
+    // Se conservan campos históricos.
     r.paypalAuthorizationId =
       authorizationId;
 
@@ -817,40 +736,51 @@ export const memoryStore: StallStore = {
     save(s);
   },
 
+  // ========================================
+  // ENTREGAR PEDIDO Y REGISTRAR PAGO
+  // ========================================
+
   async markDelivered(
     slug,
     id,
+    method
   ) {
     const s = must(slug);
+    const r = reservation(s, id);
 
-    const r = reservation(
-      s,
-      id,
-    );
+    // Solo entregar pedidos confirmados.
+    if (!r || r.status !== "authorized") {
+      return false;
+    }
 
+    // Métodos permitidos.
     if (
-      r?.status !== "authorized"
+      method !== "cash" &&
+      method !== "card" &&
+      method !== "transfer"
     ) {
       return false;
     }
 
+    // Marcar el pedido como entregado.
     r.status = "captured";
 
+    // Registrar venta con el método real.
     s.sales.push({
       id: crypto.randomUUID(),
       lines: r.lines,
-      method: "paypal",
-      totalCents:
-        r.totalCents,
+      method,
+      totalCents: r.totalCents,
       at: new Date().toISOString(),
     });
 
+    // Mantener recompensas del cliente.
     if (r.payerId) {
       stamp(
         slug,
         r.payerId,
         r.customerName,
-        1,
+        1
       );
     }
 
@@ -859,31 +789,29 @@ export const memoryStore: StallStore = {
     return true;
   },
 
+  // ========================================
+  // CANCELAR PEDIDO
+  // ========================================
+
   async release(
     slug,
     id,
-    status,
+    status
   ) {
     const s = must(slug);
+    const r = reservation(s, id);
 
-    const r = reservation(
-      s,
-      id,
-    );
-
-    if (
-      !r ||
-      !isActive(r)
-    ) {
+    if (!r || !isActive(r)) {
       return false;
     }
 
     r.status = status;
 
+    // Devolver inventario reservado.
     s.ingredients = restore(
       r.lines,
       s.dishes,
-      s.ingredients,
+      s.ingredients
     );
 
     save(s);
@@ -891,24 +819,25 @@ export const memoryStore: StallStore = {
     return true;
   },
 
-  /* =======================================
-     TARJETAS DE SELLOS
-     ======================================= */
+  // ========================================
+  // CONSULTAR SELLOS
+  // ========================================
 
   async stamps(
     slug,
-    cardId,
+    cardId
   ) {
-    return stampsOf(
-      slug,
-      cardId,
-    );
+    return stampsOf(slug, cardId);
   },
+
+  // ========================================
+  // AGREGAR SELLO
+  // ========================================
 
   async addStamp(
     slug,
     cardId,
-    label,
+    label
   ) {
     must(slug);
 
@@ -916,19 +845,21 @@ export const memoryStore: StallStore = {
       slug,
       cardId,
       label,
-      1,
+      1
     );
 
-    save(
-      must(slug),
-    );
+    save(must(slug));
 
     return n;
   },
 
+  // ========================================
+  // CANJEAR RECOMPENSAS
+  // ========================================
+
   async redeem(
     slug,
-    cardId,
+    cardId
   ) {
     const s = must(slug);
 
@@ -953,12 +884,10 @@ export const memoryStore: StallStore = {
 
     const have = stampsOf(
       slug,
-      cardId,
+      cardId
     );
 
-    if (
-      have < stampsPerReward
-    ) {
+    if (have < stampsPerReward) {
       return {
         ok: false,
         reason: "not_enough",
@@ -967,21 +896,19 @@ export const memoryStore: StallStore = {
 
     const lines = [
       {
-        dishId:
-          rewardDishId,
+        dishId: rewardDishId,
         qty: 1,
       },
     ];
 
     if (
       s.dishes.find(
-        (d) =>
-          d.id === rewardDishId,
+        (d) => d.id === rewardDishId
       )?.soldOut ||
       !canFulfill(
         lines,
         s.dishes,
-        s.ingredients,
+        s.ingredients
       ).ok
     ) {
       return {
@@ -993,14 +920,14 @@ export const memoryStore: StallStore = {
     s.ingredients = deduct(
       lines,
       s.dishes,
-      s.ingredients,
+      s.ingredients
     );
 
     stamp(
       slug,
       cardId,
       null,
-      -stampsPerReward,
+      -stampsPerReward
     );
 
     save(s);
@@ -1012,14 +939,11 @@ export const memoryStore: StallStore = {
     };
   },
 
-  /* =======================================
-     NOTIFICACIONES PUSH
-     ======================================= */
+  // ========================================
+  // SUSCRIPCIONES PUSH
+  // ========================================
 
-  async addWatch(
-    slug,
-    watch,
-  ) {
+  async addWatch(slug, watch) {
     must(slug);
 
     const list = (
@@ -1027,77 +951,111 @@ export const memoryStore: StallStore = {
     ).filter(
       (w) =>
         !(
-          w.endpoint ===
-            watch.endpoint &&
-          w.dishId ===
-            watch.dishId
-        ),
+          w.endpoint === watch.endpoint &&
+          w.dishId === watch.dishId
+        )
     );
 
-    watches.set(
-      slug,
-      [
-        ...list,
-        watch,
-      ],
-    );
+    watches.set(slug, [
+      ...list,
+      watch,
+    ]);
   },
+
+  // ========================================
+  // NOTIFICAR DISPONIBILIDAD
+  // ========================================
 
   async claimWatches(
     slug,
     open,
-    dishIds,
+    dishIds
   ) {
-    const due = (
-      w: Watch,
-    ) =>
+    const due = (w: Watch) =>
       w.dishId === null
         ? open
-        : dishIds.includes(
-            w.dishId,
-          );
+        : dishIds.includes(w.dishId);
 
-    const list =
-      watches.get(slug) ??
-      [];
+    const list = watches.get(slug) ?? [];
 
     watches.set(
       slug,
-      list.filter(
-        (w) => !due(w),
-      ),
+      list.filter((w) => !due(w))
     );
 
-    return list.filter(
-      due,
-    );
+    return list.filter(due);
   },
 
-  /* =======================================
-     RECOGER
-     ======================================= */
+  // ========================================
+  // ACTUALIZAR ESTADO DE RECOGIDA
+  // ========================================
 
-  async updatePickup(slug, id, patch) {
+  async updatePickup(
+    slug,
+    id,
+    patch
+  ) {
     const s = must(slug);
     const r = reservation(s, id);
+
     if (!r) return;
+
     Object.assign(r, patch);
+
     save(s);
   },
 
+  // ========================================
+  // GUARDAR SUSCRIPCIÓN PUSH
+  // ========================================
+
   async savePush(slug, target) {
     must(slug);
-    const list = (pushes.get(slug) ?? []).filter(
-      (p) => !(p.endpoint === target.endpoint && p.reservationId === target.reservationId),
+
+    const list = (
+      pushes.get(slug) ?? []
+    ).filter(
+      (p) =>
+        !(
+          p.endpoint === target.endpoint &&
+          p.reservationId === target.reservationId
+        )
     );
-    pushes.set(slug, [...list, { ...target }]);
+
+    pushes.set(slug, [
+      ...list,
+      { ...target },
+    ]);
   },
 
-  async pushTargets(slug, reservationId) {
-    return (pushes.get(slug) ?? []).filter((p) => p.reservationId === reservationId).map((p) => ({ ...p }));
+  // ========================================
+  // CONSULTAR SUSCRIPCIONES PUSH
+  // ========================================
+
+  async pushTargets(
+    slug,
+    reservationId
+  ) {
+    return (
+      pushes.get(slug) ?? []
+    )
+      .filter(
+        (p) =>
+          p.reservationId === reservationId
+      )
+      .map((p) => ({ ...p }));
   },
+
+  // ========================================
+  // ELIMINAR SUSCRIPCIÓN PUSH
+  // ========================================
 
   async dropPush(slug, endpoint) {
-    pushes.set(slug, (pushes.get(slug) ?? []).filter((p) => p.endpoint !== endpoint));
+    pushes.set(
+      slug,
+      (pushes.get(slug) ?? []).filter(
+        (p) => p.endpoint !== endpoint
+      )
+    );
   },
 };
