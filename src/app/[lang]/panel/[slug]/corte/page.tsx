@@ -8,6 +8,7 @@ import { connection } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 import { CashUpStudio } from "@/components/studio/CashUpStudio";
+import FinanceOverview from "@/components/studio/FinanceOverview";
 import { RefreshButton } from "@/components/studio/RefreshButton";
 import { OwnerLogin } from "@/components/OwnerLogin";
 import { getDictionary, hasLocale } from "@/dictionaries";
@@ -663,15 +664,43 @@ async function Report({
             )}
 
           {/* AG STUDIO IN ALL VIEWS */}
+          
+          {/* AG STUDIO + FINANZAS EN EL MISMO DASHBOARD */}
           <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
-            <CashUpStudio
-              key={`${mode}-${selectedDate ?? ""}-${selectedSession ?? ""}`}
-              tables={tables}
-              lang={lang}
-              stallName={state.name}
-              dateLabel={reportLabel}
+
+            {/* COMPRAS Y GASTOS DEL RESTAURANTE */}
+            <FinanceOverview
+              slug={slug}
+              lang={es ? "es" : "en"}
+              date={
+                mode === "general"
+                  ? undefined
+                  : mode === "date"
+                    ? selectedDate
+                    : mode === "session" && selectedDay
+                      ? localDate(
+                          selectedDay.opened_at,
+                          state.timezone,
+                        )
+                      : localDate(
+                          new Date().toISOString(),
+                          state.timezone,
+                        )
+              }
             />
+
+            {/* DASHBOARD ORIGINAL DE AG STUDIO */}
+            <div className="h-[800px] min-h-[600px] w-full">
+              <CashUpStudio
+                key={`${mode}-${selectedDate ?? ""}-${selectedSession ?? ""}`}
+                tables={tables}
+                lang={lang}
+                stallName={state.name}
+                dateLabel={reportLabel}
+              />
+            </div>
           </div>
+
 
           {mode !== "current" && (
             <p className="border-t border-line bg-surface px-4 py-2 text-xs text-muted">

@@ -28,6 +28,7 @@ type Business = {
   id: string;
   slug: string;
   name: string;
+  plan: string;
 };
 
 type Membership = {
@@ -112,7 +113,7 @@ async function EmployeeContent({
     await db
       .from("business_members")
       .select(
-        "role, businesses(id, slug, name)",
+        "role, businesses(id, slug, name, plan)",
       )
       .eq("user_id", me.id);
 
@@ -415,6 +416,45 @@ async function EmployeeContent({
       </section>
 
       {/* FUNCIONES FUTURAS */}
+            
+        {/* ACCESO REAL A MESAS PARA MESEROS Y ENCARGADOS */}
+        <section className="mt-8">
+        <h2 className="text-xl font-black">
+            Mesas del restaurante
+        </h2>
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            {staffMemberships
+            .filter(
+                (item) =>
+                (item.role === "waiter" ||
+                    item.role === "manager") &&
+                item.business.plan === "medium",
+            )
+            .map((item) => (
+                <Link
+                key={item.business.id}
+                href={`/${lang}/empleado/mesas/${item.business.slug}`}
+                className="block rounded-2xl border border-[#eaded3] bg-white p-5 transition hover:border-[#a3341f] hover:shadow-md"
+                >
+                <p className="text-3xl">🍽️</p>
+
+                <h3 className="mt-3 font-black">
+                    Mesas · {item.business.name}
+                </h3>
+
+                <p className="mt-2 text-sm text-gray-600">
+                    Consultar las mesas habilitadas y su capacidad.
+                </p>
+
+                <p className="mt-3 text-sm font-bold text-[#a3341f]">
+                    Abrir mesas →
+                </p>
+                </Link>
+            ))}
+        </div>
+        </section>
+
 
       <section className="mt-8">
         <h2 className="text-xl font-black">
@@ -480,4 +520,3 @@ async function EmployeeContent({
     </main>
   );
 }
-    

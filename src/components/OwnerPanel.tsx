@@ -2,7 +2,9 @@
 "use client";
 
 import Image from "next/image";
+import PurchaseRestockDialog from "@/components/PurchaseRestockDialog";
 import { OwnerOperationsPanel } from "@/components/OwnerOperationsPanel";
+import ActiveTablesSummary from "@/components/ActiveTablesSummary";
 import OwnerRewardPinCard from "@/components/OwnerRewardPinCard";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -564,6 +566,14 @@ export function OwnerPanel({
           />
         }
       />
+            
+            
+      {/* RESUMEN DE MESAS PARA EL DUEÑO */}
+      <ActiveTablesSummary
+        slug={view.slug}
+        lang={lang}
+      />
+
 
       {/* PUNTO DE VENTA */}
       <div className="px-4 pt-8 sm:px-6 lg:px-8">
@@ -932,36 +942,46 @@ export function OwnerPanel({
         />
       )}
 
+            
       {restocking && (
-        <RestockDialog
-          view={view}
-          t={t}
-          lang={lang}
-          busy={busy}
-          onCancel={() =>
-            setRestocking(false)
-          }
-          onRestock={async (adds) => {
-            const r = await act({
-              action: "restock",
-              adds,
+        <PurchaseRestockDialog
+          slug={view.slug}
+          ingredients={view.ingredients}
+          onCancel={() => setRestocking(false)}
+          onSuccess={async () => {
+            setRestocking(false);
+
+            setToast({
+              kind: "ok",
+              text: "Compra registrada e inventario actualizado.",
             });
 
-            if (r?.error === "closed") {
-              setToast({
-                kind: "bad",
-                text: o.closedError,
-              });
-            } else if (r && !r.error) {
-              setRestocking(false);
-              setToast({
-                kind: "ok",
-                text: o.restocked,
-              });
+            try {
+              const response = await fetch(
+                `/api/stalls/${view.slug}?view=owner`,
+                {
+                  cache: "no-store",
+                }
+              );
+
+              if (response.ok) {
+                const updatedView = await response.json();
+                setView(updatedView);
+              } else {
+                console.error(
+                  "No se pudo actualizar el inventario visible."
+                );
+              }
+            } catch (error) {
+              console.error(
+                "La compra se guardó, pero no se pudo actualizar el panel:",
+                error
+              );
             }
           }}
         />
       )}
+
 
       {cashUp && (
         <CashUpDialog
@@ -1927,154 +1947,6 @@ function HandOverDialog({
         >
           {o.handCancel}
         </button>
-      </form>
-    </Sheet>
-  );
-}
-
-/* ========================================
-   REABASTECIMIENTO
-======================================== */
-
-function RestockDialog({
-  view,
-  t,
-  lang,
-  busy,
-  onCancel,
-  onRestock,
-}: {
-  view: OwnerView;
-  t: Dictionary;
-  lang: string;
-  busy: boolean;
-  onCancel: () => void;
-  onRestock: (
-    adds: Record<
-      string,
-      number
-    >,
-  ) => void;
-}) {
-  const o = t.owner;
-
-  const [adds, setAdds] =
-    useState<
-      Record<string, string>
-    >({});
-
-  const parsed = Object.fromEntries(
-    Object.entries(adds)
-      .map(
-        ([k, v]) =>
-          [
-            k,
-            Number(v) || 0,
-          ] as const,
-      )
-      .filter(([, n]) => n > 0),
-  );
-
-  return (
-    <Sheet>
-      <h2 className="text-2xl font-black">
-        {o.restockTitle}
-      </h2>
-
-      <p className="mt-2 text-sm text-muted">
-        {o.restockHint}
-      </p>
-
-      <form
-        className="mt-5 flex flex-col gap-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-
-          if (
-            Object.keys(parsed).length
-          ) {
-            onRestock(parsed);
-          }
-        }}
-      >
-        {view.ingredients.map((i) => (
-          <label
-            key={i.id}
-            className="flex items-center gap-3"
-          >
-            <span className="min-w-0 flex-1">
-              <span className="block font-semibold">
-                {i.name}
-              </span>
-
-              <span
-                className={`mt-1 block text-xs ${
-                  i.stock <= 0
-                    ? "font-semibold text-bad"
-                    : "text-muted"
-                }`}
-              >
-                {fill(o.youHave, {
-                  n: qty(
-                    i.stock,
-                    i.unit,
-                    lang,
-                  ),
-                })}
-              </span>
-            </span>
-
-            <span className="text-lg text-muted">
-              +
-            </span>
-
-            <input
-              inputMode="decimal"
-              placeholder="0"
-              className="w-24 rounded-xl border border-line bg-background px-3 py-2 text-right text-lg tabular-nums"
-              value={
-                adds[i.id] ?? ""
-              }
-              onChange={(e) =>
-                setAdds((c) => ({
-                  ...c,
-                  [i.id]:
-                    e.target.value.replace(
-                      /[^\d.]/g,
-                      "",
-                    ),
-                }))
-              }
-              aria-label={`${o.restock} ${i.name} (${i.unit})`}
-            />
-
-            <span className="w-8 text-sm text-muted">
-              {i.unit}
-            </span>
-          </label>
-        ))}
-
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-2xl border border-line py-3 font-semibold"
-          >
-            {o.cancel}
-          </button>
-
-          <button
-            type="submit"
-            disabled={
-              busy ||
-              !Object.keys(parsed)
-                .length
-            }
-            className="rounded-2xl bg-brand py-3 font-bold text-white disabled:opacity-50"
-          >
-            {o.restockConfirm}
-          </button>
-        </div>
       </form>
     </Sheet>
   );
