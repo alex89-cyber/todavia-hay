@@ -1,8 +1,25 @@
-import "server-only";
-import { kitchenStage, needsConfirmation, pickupSettings, prepStartsAt, type KitchenStage } from "./pickup";
-import { isActive, type Reservation, type StallState } from "./stall";
 
-/** One order this browser reserved, as the customer sees it. */
+import "server-only";
+
+import {
+  kitchenStage,
+  needsConfirmation,
+  pickupSettings,
+  prepStartsAt,
+  type KitchenStage,
+} from "./pickup";
+
+import {
+  type Reservation,
+  type ReservationStatus,
+  type StallState,
+} from "./stall";
+
+// ==========================================
+// TODAVÍA HAY
+// PEDIDOS VISIBLES PARA EL CLIENTE
+// ==========================================
+
 export type HeldOrder = {
   id: string;
   code: string | null;
@@ -10,40 +27,111 @@ export type HeldOrder = {
   items: string;
   totalCents: number;
   pickupMode: "asap" | "scheduled";
-  /** Chosen time, or estimated ready time for "para ahorita". */
   pickupAt: string | null;
-  /** Charged if not picked up by then. */
   pickupBy: string;
+
+  // Estado real registrado en Supabase.
+  status: ReservationStatus;
+
   stage: KitchenStage;
   needsConfirmation: boolean;
   confirmed: boolean;
-  /** Unconfirmed orders are cancelled for free at this time. */
   confirmBy: string | null;
 };
 
-export function heldOrder(s: StallState, lang: "es" | "en", r: Reservation, now = new Date()): HeldOrder {
-  const name = new Map(s.dishes.map((d) => [d.id, lang === "es" ? d.nameEs : d.nameEn]));
+// ==========================================
+// CONVERTIR RESERVACIÓN PARA LA INTERFAZ
+// ==========================================
+
+export function heldOrder(
+  s: StallState,
+  lang: "es" | "en",
+  r: Reservation,
+  now = new Date(),
+): HeldOrder {
+  const names = new Map(
+    s.dishes.map((d) => [
+      d.id,
+      lang === "es" ? d.nameEs : d.nameEn,
+    ]),
+  );
+
   const p = pickupSettings(s);
-  const confirm = needsConfirmation(r);
+  const confirm =
+    r.status === "authorized" &&
+    needsConfirmation(r);
+
   return {
     id: r.id,
-    code: r.pickupCode,
+
+    // El NIP ya no hace falta cuando
+    // el pedido fue entregado o cancelado.
+    code:
+      r.status === "authorized"
+        ? r.pickupCode
+        : null,
+
     orderNumber: r.orderNumber,
-    items: r.lines.map((l) => `${l.qty} × ${name.get(l.dishId) ?? "?"}`).join(", "),
+
+    items: r.lines
+      .map(
+        (l) =>
+          `${l.qty} × ${
+            names.get(l.dishId) ?? "?"
+          }`,
+      )
+      .join(", "),
+
     totalCents: r.totalCents,
     pickupMode: r.pickupMode,
     pickupAt: r.pickupAt,
     pickupBy: r.pickupBy,
+    status: r.status,
+
     stage: kitchenStage(r, p, now),
+
     needsConfirmation: confirm,
+
     confirmed: Boolean(r.confirmedAt),
-    confirmBy: confirm ? prepStartsAt(r, p).toISOString() : null,
+
+    confirmBy: confirm
+      ? prepStartsAt(
+          r,
+          p,
+        ).toISOString()
+      : null,
   };
 }
 
-export const holdIds = (cookie: string | undefined) => (cookie ?? "").split(",").filter(Boolean);
+// ==========================================
+// IDENTIFICADORES DEL NAVEGADOR
+// ==========================================
 
-/** Active reservations this browser made (cookie set on the PayPal return), newest first. */
+export function holdIds(
+  cookie: string | undefined,
+): string[] {
+  return (cookie ?? "")
+    .split(",")
+    .filter(
+      (id) =>
+        /^[0-9a-f-]{36}$/i.test(id),
+    )
+    .slice(0, 30);
+}
+
+// ==========================================
+// HISTORIAL DE PEDIDOS
+// ==========================================
+
+// Incluye pedidos pendientes,
+// entregados, vencidos y cancelados.
+//
+// Solo devuelve reservas que pertenecen
+// a la cuenta autenticada o que están
+// asociadas a la cookie del navegador.
+//
+// No identifica clientes por nombre.
+
 export function heldOrders(
   s: StallState,
   lang: "es" | "en",
@@ -51,13 +139,38 @@ export function heldOrders(
   customerId: string | null = null,
 ): HeldOrder[] {
   const ids = holdIds(cookie);
+  const owned = new Set(ids);
+
   return s.reservations
+    .filter((r) => {
+      const belongsToBrowser =
+        owned.has(r.id);
+
+      const belongsToAccount =
+        customerId !== null &&
+        r.customerId === customerId;
+
+      return (
+        belongsToBrowser ||
+        belongsToAccount
+      );
+    })
     .filter(
       (r) =>
-        (ids.includes(r.id) || (customerId !== null && r.customerId === customerId)) &&
-        isActive(r) &&
-        r.status === "authorized",
+        r.status !== "held",
     )
-    .sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id))
-    .map((r) => heldOrder(s, lang, r));
+    .sort(
+      (a, b) =>
+        new Date(
+          b.createdAt,
+        ).getTime() -
+        new Date(
+          a.createdAt,
+        ).getTime(),
+    )
+    .slice(0, 30)
+    .map(
+      (r) =>
+        heldOrder(s, lang, r),
+    );
 }

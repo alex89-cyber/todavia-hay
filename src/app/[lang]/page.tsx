@@ -1,4 +1,5 @@
 
+import { LoginDropdown } from "@/components/LoginDropdown";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDictionary, hasLocale } from "@/dictionaries";
@@ -13,9 +14,8 @@ export default async function Home({
   const t = await getDictionary(lang);
   const es = lang === "es";
 
-  // Tres destinos diferentes.
+  // Destinos de las demostraciones.
   const demoHref = `/${lang}/birria-dona-lupe`;
-  const ownerHref = `/${lang}/login`;
   const businessDemoHref = "#contacto";
 
   const features = [
@@ -33,7 +33,7 @@ export default async function Home({
       title: es ? "Menú en tiempo real" : "Live digital menu",
       description: es
         ? "Tus clientes siempre saben qué está disponible."
-        : "Customers always know what's available.",
+        : "Your customers always know what's available.",
     },
     {
       icon: "✨",
@@ -78,7 +78,10 @@ export default async function Home({
         }
       `}</style>
 
-      {/* NAVEGACIÓN */}
+      {/* ==========================================
+          NAVEGACIÓN
+      ========================================== */}
+
       <header className="relative z-30 border-b border-[#E9EAE3] bg-[#FAF9F6]/95">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-5 py-5 sm:px-8 lg:px-12">
           <Link
@@ -100,29 +103,31 @@ export default async function Home({
             >
               {es ? "Cómo funciona" : "How it works"}
             </a>
+
             <a
               href="#contacto"
               className="hidden text-sm font-semibold text-[#456051] hover:text-[#E68B5C] sm:inline"
             >
               {es ? "Contacto" : "Contact"}
             </a>
+
             <Link
               href={es ? "/en" : "/es"}
               className="rounded-full border border-[#E4E7DE] px-3 py-2 text-xs font-bold transition hover:bg-white"
             >
               {es ? "EN" : "ES"}
             </Link>
-            <Link
-              href={ownerHref}
-              className="rounded-full bg-[#244D38] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#32684C] sm:px-5 sm:text-sm"
-            >
-              {es ? "Iniciar sesión" : "Business login"}
-            </Link>
+
+            {/* MENÚ CON LOS 4 ACCESOS */}
+            <LoginDropdown lang={lang} />
           </nav>
         </div>
       </header>
 
-      {/* PORTADA */}
+      {/* ==========================================
+          PORTADA
+      ========================================== */}
+
       <section className="relative isolate">
         <div className="pointer-events-none absolute -left-32 top-32 h-72 w-72 rounded-full bg-[#E9F0E6] blur-3xl" />
         <div className="pointer-events-none absolute -right-28 bottom-0 h-80 w-80 rounded-full bg-[#F7E9DE] blur-3xl" />
@@ -171,12 +176,9 @@ export default async function Home({
               >
                 {es ? "Descubrir la plataforma" : "Discover the platform"} ↗
               </a>
-              <Link
-                href={ownerHref}
-                className="inline-flex min-h-14 items-center justify-center rounded-2xl border border-[#DDE2D7] bg-white px-7 py-4 text-sm font-bold text-[#244D38] transition hover:-translate-y-1 hover:border-[#244D38]"
-              >
-                {es ? "Iniciar sesión" : "Log in"}
-              </Link>
+
+              {/* MISMO MENÚ DE INICIO DE SESIÓN */}
+              <LoginDropdown lang={lang} variant="hero" />
             </div>
 
             <a
@@ -195,7 +197,10 @@ export default async function Home({
             </div>
           </div>
 
-          {/* ILUSTRACIÓN DE AMBAS EXPERIENCIAS */}
+          {/* ======================================
+              ILUSTRACIÓN DE AMBAS EXPERIENCIAS
+          ====================================== */}
+
           <div className="relative mx-auto flex w-full max-w-[560px] items-center justify-center py-12">
             <div className="absolute h-[92%] w-[92%] rounded-full bg-[#EAF0E6]" />
             <div className="absolute h-[74%] w-[74%] rounded-full border border-[#CFDDCA]" />
@@ -204,12 +209,13 @@ export default async function Home({
             <div className="th-float absolute left-0 top-5 z-20 rounded-2xl bg-white p-4 text-4xl shadow-xl">
               🥑
             </div>
+
             <div className="th-float-alt absolute right-0 top-10 z-20 rounded-2xl bg-white p-4 text-4xl shadow-xl">
               🍋
             </div>
 
             <div className="relative z-10 my-10 flex w-[87%] max-w-[440px] flex-col gap-3">
-              <div className="-rotate-3 rounded-[2rem] border border-white bg-white p-5 shadow-[0_25px_55px_rgba(31,62,42,.12)] transition-transform duration-500 hover:rotate-0 sm:p-6">
+              <div className="-rotate-3 rounded-[2rem] border border-white bg-white p-5 shadow-[0_25px_55px_rgba(31,62,42,.12)] transition-transform duration-500 group-hover:rotate-0 sm:p-6">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-3">
                     <span className="rounded-xl bg-[#EAF3E8] p-3 text-2xl">
@@ -294,7 +300,10 @@ export default async function Home({
         </div>
       </section>
 
-      {/* FRANJA */}
+      {/* ==========================================
+          FRANJA
+      ========================================== */}
+
       <section className="border-y border-[#E6ECE3] bg-[#F0F4ED]">
         <div className="mx-auto grid max-w-7xl gap-5 px-5 py-7 text-center sm:grid-cols-3 sm:px-8 lg:px-12">
           {[
@@ -315,7 +324,10 @@ export default async function Home({
         </div>
       </section>
 
-      {/* FUNCIONALIDADES */}
+      {/* ==========================================
+          FUNCIONALIDADES
+      ========================================== */}
+
       <section className="bg-white px-5 py-20 sm:px-8 lg:px-12 lg:py-28">
         <div className="mx-auto max-w-7xl">
           <div className="mx-auto max-w-3xl text-center">
@@ -358,7 +370,10 @@ export default async function Home({
         </div>
       </section>
 
-      {/* DOS EXPERIENCIAS, SIMÉTRICAS */}
+      {/* ==========================================
+          DOS EXPERIENCIAS
+      ========================================== */}
+
       <section
         id="experiencias"
         className="scroll-mt-20 bg-[#F4F6F1] px-5 py-20 sm:px-8 lg:px-12 lg:py-28"
@@ -398,6 +413,7 @@ export default async function Home({
 
           <div className="mt-14 grid items-stretch gap-6 lg:grid-cols-2">
             {/* TARJETA DEL NEGOCIO */}
+
             <article className="group flex h-full flex-col overflow-hidden rounded-[2rem] border border-[#DDE7DB] bg-white shadow-sm transition hover:-translate-y-2 hover:shadow-xl">
               <div className="relative flex h-[350px] items-center justify-center overflow-hidden bg-[#E6EEE3] p-7 sm:p-9">
                 <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full border-[35px] border-white/40" />
@@ -501,6 +517,7 @@ export default async function Home({
             </article>
 
             {/* TARJETA DEL CLIENTE */}
+
             <article className="group flex h-full flex-col overflow-hidden rounded-[2rem] border border-[#EFE2D5] bg-white shadow-sm transition hover:-translate-y-2 hover:shadow-xl">
               <div className="relative flex h-[350px] items-center justify-center overflow-hidden bg-[#F8E9DB] p-7 sm:p-9">
                 <div className="pointer-events-none absolute -left-16 -top-16 h-56 w-56 rounded-full border-[35px] border-white/40" />
@@ -594,6 +611,7 @@ export default async function Home({
           </div>
 
           {/* EXPLICACIÓN DE CONEXIÓN */}
+
           <div className="mt-12 rounded-[2rem] border border-[#DDE7DB] bg-white p-6 sm:p-9">
             <div className="text-center">
               <p className="text-xs font-black uppercase tracking-wider text-[#6B9D78]">
@@ -652,7 +670,10 @@ export default async function Home({
         </div>
       </section>
 
-      {/* INVENTARIO */}
+      {/* ==========================================
+          INVENTARIO
+      ========================================== */}
+
       <section className="bg-[#FAF9F6] px-5 py-20 sm:px-8 lg:px-12 lg:py-28">
         <div className="mx-auto grid max-w-7xl items-center gap-12 lg:grid-cols-2">
           <div className="relative order-2 flex min-h-[350px] items-center justify-center lg:order-1">
@@ -718,7 +739,7 @@ export default async function Home({
             <p className="mt-6 max-w-lg text-base leading-8 text-[#78877C]">
               {es
                 ? "Olvídate de calcular a mano cuántas porciones quedan. Registra tus ingredientes y deja que la plataforma te ayude a mantener todo organizado."
-                : "Forget counting remaining portions by hand. Track ingredients and let the platform help you stay organized."}
+                : "Forget counting remaining portions by hand. Track ingredients and let the platform help you keep everything organized."}
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
@@ -738,24 +759,31 @@ export default async function Home({
         </div>
       </section>
 
-      {/* LLAMADO A LA ACCIÓN */}
+      {/* ==========================================
+          LLAMADO A LA ACCIÓN
+      ========================================== */}
+
       <section className="bg-white px-5 py-20 sm:px-8 lg:px-12 lg:py-28">
         <div className="relative mx-auto max-w-7xl overflow-hidden rounded-[2.5rem] bg-[#244D38] px-6 py-16 text-center text-white sm:px-12 sm:py-24">
           <div className="pointer-events-none absolute -left-20 -top-20 h-64 w-64 rounded-full border-[35px] border-white/10" />
           <div className="pointer-events-none absolute -bottom-32 -right-20 h-80 w-80 rounded-full border-[45px] border-white/10" />
+
           <span className="relative rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-bold uppercase tracking-wider">
             ¿Todavía hay?
           </span>
+
           <h2 className="relative mx-auto mt-7 max-w-3xl text-4xl font-black leading-tight tracking-[-.055em] sm:text-6xl">
             {es
               ? "Que no se te escape ninguna oportunidad."
               : "Make every opportunity count."}
           </h2>
+
           <p className="relative mx-auto mt-6 max-w-xl text-base leading-8 text-[#D5E5D6]">
             {es
               ? "Conoce una manera más sencilla de conectar tu cocina, tu inventario y tus clientes."
               : "Discover an easier way to connect your kitchen, inventory and customers."}
           </p>
+
           <div className="relative mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link
               href={businessDemoHref}
@@ -779,10 +807,16 @@ export default async function Home({
         </div>
       </section>
 
-      {/* CONTACTOS Y FORMULARIO EXISTENTES */}
+      {/* ==========================================
+          CONTACTO
+      ========================================== */}
+
       <ContactSection lang={lang} />
 
-      {/* FOOTER */}
+      {/* ==========================================
+          FOOTER
+      ========================================== */}
+
       <footer className="border-t border-[#E7EBE4] bg-[#FAF9F6]">
         <div className="mx-auto flex max-w-7xl flex-col gap-6 px-5 py-9 sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-12">
           <div>
@@ -800,15 +834,22 @@ export default async function Home({
             <Link href={businessDemoHref} className="hover:text-[#244D38]">
               {es ? "Pedir demostración" : "Request a demo"}
             </Link>
+
             <Link href={demoHref} className="hover:text-[#244D38]">
               {t.demoLink}
             </Link>
-            <Link href={ownerHref} className="hover:text-[#244D38]">
-              {es ? "Iniciar sesión" : "Business login"}
+
+            <Link
+              href={`/${lang}/negocios/login`}
+              className="hover:text-[#244D38]"
+            >
+              {es ? "Acceso para negocios" : "Business login"}
             </Link>
+
             <a href="#contacto" className="hover:text-[#244D38]">
               {es ? "Contacto" : "Contact"}
             </a>
+
             <Link
               href={es ? "/en" : "/es"}
               className="hover:text-[#244D38]"

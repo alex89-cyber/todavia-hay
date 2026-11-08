@@ -40,3 +40,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# respaldos y scripts sueltos
+*.bak
+*.bak-*
+errores.txt

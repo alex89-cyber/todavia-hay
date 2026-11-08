@@ -1,15 +1,28 @@
+
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useState,
+} from "react";
+
 import type { Dictionary } from "@/dictionaries";
 import type { HeldOrder } from "@/lib/holds";
-import { clock, fill, money } from "@/lib/format";
+
+import {
+  clock,
+  fill,
+  money,
+} from "@/lib/format";
+
 import { subscribePush } from "@/lib/client-push";
 
-// "Tu apartado": the customer's orders with their pickup status. Polls so the
-// card changes on its own when the stall asks to confirm or marks it ready.
+// ==========================================
+// TODAVÍA HAY
+// MIS PEDIDOS Y APARTADOS
+// ==========================================
 
-const POLL_MS = 20_000;
+const POLL_MS = 15_000;
 
 export function HeldOrders({
   slug,
@@ -28,41 +41,126 @@ export function HeldOrders({
   initial: HeldOrder[];
   t: Dictionary;
 }) {
-  const [holds, setHolds] = useState(initial);
+  const [holds, setHolds] =
+    useState<HeldOrder[]>(initial);
+
+  // ========================================
+  // CONSULTAR ESTADOS ACTUALIZADOS
+  // ========================================
 
   useEffect(() => {
-    if (!initial.length) return;
-    const tick = async () => {
-      try {
-        const res = await fetch(`/api/stalls/${slug}/holds?lang=${lang}`, { cache: "no-store" });
-        if (!res.ok) return;
-        const json = (await res.json()) as { holds: HeldOrder[] };
-        setHolds(json.holds);
-      } catch {}
-    };
-    const id = setInterval(tick, POLL_MS);
-    return () => clearInterval(id);
-  }, [slug, lang, initial]);
+    let active = true;
 
-  if (!holds.length) return null;
+    async function refresh() {
+      try {
+        const response = await fetch(
+          `/api/stalls/${encodeURIComponent(
+            slug,
+          )}/holds?lang=${lang}`,
+          {
+            cache: "no-store",
+            credentials: "same-origin",
+          },
+        );
+
+        if (!response.ok) return;
+
+        const data =
+          (await response.json()) as {
+            holds: HeldOrder[];
+          };
+
+        if (
+          active &&
+          Array.isArray(data.holds)
+        ) {
+          setHolds(data.holds);
+        }
+      } catch (error) {
+        console.error(
+          "Error al actualizar pedidos:",
+          error,
+        );
+      }
+    }
+
+    void refresh();
+
+    const timer = window.setInterval(
+      () => {
+        if (
+          document.visibilityState ===
+          "visible"
+        ) {
+          void refresh();
+        }
+      },
+      POLL_MS,
+    );
+
+    const onFocus = () => {
+      void refresh();
+    };
+
+    window.addEventListener(
+      "focus",
+      onFocus,
+    );
+
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+
+      window.removeEventListener(
+        "focus",
+        onFocus,
+      );
+    };
+  }, [slug, lang]);
+
+  if (!holds.length) {
+    return null;
+  }
+
   return (
-    <>
-      {holds.map((h) => (
+    <section className="space-y-4">
+      <h2 className="text-2xl font-black">
+        {lang === "es"
+          ? "Mis pedidos"
+          : "My orders"}
+      </h2>
+
+      {holds.map((hold) => (
         <HoldCard
-          key={h.id}
-          hold={h}
+          key={hold.id}
+          hold={hold}
           slug={slug}
           lang={lang}
           currency={currency}
           timezone={timezone}
           vapidKey={vapidKey}
           t={t}
-          onChange={(patch) => setHolds((list) => list.map((x) => (x.id === h.id ? { ...x, ...patch } : x)))}
+          onChange={(patch) => {
+            setHolds((current) =>
+              current.map((item) =>
+                item.id === hold.id
+                  ? {
+                      ...item,
+                      ...patch,
+                    }
+                  : item,
+              ),
+            );
+          }}
         />
       ))}
-    </>
+    </section>
   );
 }
+
+// ==========================================
+// TARJETA INDIVIDUAL
+// ==========================================
 
 function HoldCard({
   hold,
@@ -81,120 +179,394 @@ function HoldCard({
   timezone: string;
   vapidKey: string | null;
   t: Dictionary;
-  onChange: (patch: Partial<HeldOrder>) => void;
+  onChange: (
+    patch: Partial<HeldOrder>,
+  ) => void;
 }) {
   const p = t.public;
-  const at = (iso: string | null) => (iso ? clock(iso, timezone, lang) : "");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notify, setNotify] = useState<"idle" | "on" | "denied" | "ios" | "error">("idle");
+  const es = lang === "es";
+
+  const [busy, setBusy] =
+    useState(false);
+
+  const [error, setError] =
+    useState<string | null>(null);
+
+  const [notify, setNotify] =
+    useState<
+      | "idle"
+      | "on"
+      | "denied"
+      | "ios"
+      | "error"
+    >("idle");
+
+  const at = (
+    iso: string | null,
+  ) =>
+    iso
+      ? clock(
+          iso,
+          timezone,
+          lang,
+        )
+      : "";
+
+  const delivered =
+    hold.status === "captured";
+
+  const expired =
+    hold.status === "expired";
+
+  const cancelled =
+    hold.status === "voided";
+
+  const active =
+    hold.status === "authorized";
+
+  const ready =
+    active &&
+    hold.stage === "ready";
+
+  // ========================================
+  // TEXTO DEL ESTADO
+  // ========================================
+
+  const status = delivered
+    ? es
+      ? "Entregado y pagado"
+      : "Delivered and paid"
+    : expired
+      ? es
+        ? "Pedido vencido"
+        : "Expired order"
+      : cancelled
+        ? es
+          ? "Pedido cancelado"
+          : "Cancelled order"
+        : hold.stage === "ready"
+          ? p.pickupReady
+          : hold.stage === "to_prepare"
+            ? hold.pickupMode === "asap"
+              ? fill(
+                  p.pickupAsap,
+                  {
+                    time: at(
+                      hold.pickupAt,
+                    ),
+                  },
+                )
+              : fill(
+                  p.pickupPreparing,
+                  {
+                    time: at(
+                      hold.pickupAt,
+                    ),
+                  },
+                )
+            : hold.stage ===
+                "awaiting_confirmation"
+              ? fill(
+                  p.pickupConfirmAsk,
+                  {
+                    time: at(
+                      hold.confirmBy,
+                    ),
+                  },
+                )
+              : fill(
+                  p.pickupScheduled,
+                  {
+                    time: at(
+                      hold.pickupAt,
+                    ),
+                  },
+                );
+
+  // ========================================
+  // CONFIRMAR RECOGIDA
+  // ========================================
 
   async function confirm() {
+    if (!active || busy) return;
+
     setBusy(true);
     setError(null);
+
     try {
-      const res = await fetch(`/api/stalls/${slug}/holds`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "confirm", id: hold.id }),
+      const response = await fetch(
+        `/api/stalls/${encodeURIComponent(
+          slug,
+        )}/holds`,
+        {
+          method: "POST",
+
+          credentials: "same-origin",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          body: JSON.stringify({
+            action: "confirm",
+            id: hold.id,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          String(response.status),
+        );
+      }
+
+      onChange({
+        confirmed: true,
+        stage: "scheduled",
       });
-      if (!res.ok) throw new Error(String(res.status));
-      onChange({ confirmed: true, stage: "scheduled" });
     } catch {
-      setError(p.pickupConfirmError);
+      setError(
+        p.pickupConfirmError,
+      );
     } finally {
       setBusy(false);
     }
   }
 
+  // ========================================
+  // NOTIFICACIONES
+  // ========================================
+
   async function notifyMe() {
-    if (!vapidKey) return;
+    if (
+      !vapidKey ||
+      !active
+    ) {
+      return;
+    }
+
     try {
-      const sub = await subscribePush(vapidKey);
-      if (typeof sub === "string") return setNotify(sub === "unsupported" ? "error" : sub);
-      const res = await fetch(`/api/stalls/${slug}/holds`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "push", id: hold.id, lang, subscription: sub }),
-      });
-      setNotify(res.ok ? "on" : "error");
+      const subscription =
+        await subscribePush(vapidKey);
+
+      if (
+        typeof subscription ===
+        "string"
+      ) {
+        setNotify(
+          subscription === "unsupported"
+            ? "error"
+            : subscription,
+        );
+        return;
+      }
+
+      const response = await fetch(
+        `/api/stalls/${encodeURIComponent(
+          slug,
+        )}/holds`,
+        {
+          method: "POST",
+
+          credentials: "same-origin",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          body: JSON.stringify({
+            action: "push",
+            id: hold.id,
+            lang,
+            subscription,
+          }),
+        },
+      );
+
+      setNotify(
+        response.ok
+          ? "on"
+          : "error",
+      );
     } catch {
       setNotify("error");
     }
   }
 
-  const status =
-    hold.stage === "ready"
-      ? p.pickupReady
-      : hold.stage === "to_prepare"
-        ? hold.pickupMode === "asap"
-          ? fill(p.pickupAsap, { time: at(hold.pickupAt) })
-          : fill(p.pickupPreparing, { time: at(hold.pickupAt) })
-        : hold.stage === "awaiting_confirmation"
-          ? fill(p.pickupConfirmAsk, { time: at(hold.confirmBy) })
-          : fill(p.pickupScheduled, { time: at(hold.pickupAt) });
+  // ========================================
+  // INTERFAZ
+  // ========================================
 
-  const ready = hold.stage === "ready";
   return (
     <div
       role="status"
-      className={`space-y-3 rounded-3xl border p-6 shadow-sm sm:p-8 ${
-        ready ? "border-brand bg-brand text-white" : "border-ok/20 bg-ok-soft text-ok"
+      className={`space-y-3 rounded-3xl border p-5 shadow-sm sm:p-8 ${
+        ready
+          ? "border-brand bg-brand text-white"
+          : delivered
+            ? "border-green-200 bg-green-50 text-green-900"
+            : "border-line bg-surface text-foreground"
       }`}
     >
+      {/* NÚMERO DE PEDIDO */}
+
       <p className="text-lg font-extrabold">
-        {p.yourHold}
-        {hold.orderNumber ? ` · ${fill(p.orderNumber, { n: hold.orderNumber })}` : ""}
+        {es
+          ? "Tu pedido"
+          : "Your order"}
+
+        {hold.orderNumber
+          ? ` #${hold.orderNumber}`
+          : ""}
       </p>
 
-      <p className={`font-bold ${ready ? "text-2xl" : "text-base"}`}>{status}</p>
+      {/* ESTADO */}
 
-      {hold.stage === "scheduled" && hold.needsConfirmation && (
-        <p className="text-sm">{hold.confirmed ? p.pickupConfirmed : p.pickupConfirmLater}</p>
-      )}
+      <p className="text-base font-bold sm:text-xl">
+        {delivered ? "✓ " : ""}
+        {status}
+      </p>
 
-      {hold.stage === "awaiting_confirmation" && (
-        <button
-          onClick={confirm}
-          disabled={busy}
-          className="w-full rounded-full bg-brand py-3 font-bold text-white active:scale-[0.98] disabled:opacity-60 sm:w-auto sm:px-8"
-        >
-          {p.pickupConfirmButton}
-        </button>
-      )}
-      {error && <p className="text-sm font-semibold text-bad">{error}</p>}
+      {/* PRODUCTOS */}
 
       <p className="text-sm leading-relaxed">
-        {hold.items} · {money(hold.totalCents, currency, lang)}
+        {hold.items}
+        {" · "}
+        {money(
+          hold.totalCents,
+          currency,
+          lang,
+        )}
       </p>
 
-      {hold.code && (
-        <div className="flex items-center gap-4 pt-1">
-          <span className="rounded-2xl bg-surface px-4 py-2 font-mono text-3xl font-black tracking-[0.3em] text-foreground">
+      {/* HORARIO */}
+
+      {hold.pickupAt && (
+        <p className="text-sm">
+          {es
+            ? "Hora de recogida:"
+            : "Pickup time:"}
+          {" "}
+          {at(hold.pickupAt)}
+        </p>
+      )}
+
+      {/* RECORDATORIO DE CONFIRMACIÓN */}
+
+      {active &&
+        hold.stage === "scheduled" &&
+        hold.needsConfirmation && (
+          <p className="text-sm">
+            {hold.confirmed
+              ? p.pickupConfirmed
+              : p.pickupConfirmLater}
+          </p>
+        )}
+
+      {/* BOTÓN PARA CONFIRMAR */}
+
+      {active &&
+        hold.stage ===
+          "awaiting_confirmation" && (
+          <button
+            onClick={confirm}
+            disabled={busy}
+            className="rounded-full bg-brand px-5 py-3 font-bold text-white disabled:opacity-50"
+          >
+            {p.pickupConfirmButton}
+          </button>
+        )}
+
+      {error && (
+        <p className="text-sm text-red-700">
+          {error}
+        </p>
+      )}
+
+      {/* NIP SOLO PARA PEDIDOS ACTIVOS */}
+
+      {active && hold.code && (
+        <div className="flex flex-wrap items-center gap-4 pt-2">
+          <span className="rounded-2xl border border-line bg-white px-4 py-2 font-mono text-3xl font-black tracking-[0.25em] text-black">
             {hold.code}
           </span>
-          <span className="text-sm font-semibold leading-snug">{p.pickupCodeHint}</span>
+
+          <span className="text-sm">
+            {p.pickupCodeHint}
+          </span>
         </div>
       )}
 
-      {!ready && vapidKey && (
-        <div className="space-y-1">
-          <button
-            onClick={notifyMe}
-            disabled={notify === "on"}
-            className={`rounded-full px-4 py-2 text-sm font-semibold active:scale-95 ${
-              notify === "on" ? "bg-surface text-ok" : "bg-brand text-white"
-            }`}
-          >
-            {notify === "on" ? `✓ ${p.readyNotifyOn}` : `🔔 ${p.readyNotify}`}
-          </button>
-          {notify === "denied" && <p className="text-xs">{p.notifyDenied}</p>}
-          {notify === "ios" && <p className="text-xs">{p.notifyIos}</p>}
-          {notify === "error" && <p className="text-xs">{p.notifyError}</p>}
-        </div>
+      {/* AVISO DE PAGO */}
+
+      {delivered && (
+        <p className="text-sm font-semibold">
+          {es
+            ? "El negocio registró la entrega y el pago."
+            : "The business recorded delivery and payment."}
+        </p>
       )}
 
-      <p className={`text-xs ${ready ? "text-white/80" : ""}`}>{fill(p.pickupChargeNote, { time: at(hold.pickupBy) })}</p>
+      {active && (
+        <p className="text-sm">
+          {es
+            ? "Pagarás al recoger tu pedido."
+            : "Payment is collected at pickup."}
+        </p>
+      )}
+
+      {/* NOTIFICACIONES */}
+
+      {active &&
+        !ready &&
+        vapidKey && (
+          <div className="space-y-1">
+            <button
+              onClick={notifyMe}
+              disabled={notify === "on"}
+              className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {notify === "on"
+                ? `✓ ${p.readyNotifyOn}`
+                : `🔔 ${p.readyNotify}`}
+            </button>
+
+            {notify === "denied" && (
+              <p className="text-xs">
+                {p.notifyDenied}
+              </p>
+            )}
+
+            {notify === "ios" && (
+              <p className="text-xs">
+                {p.notifyIos}
+              </p>
+            )}
+
+            {notify === "error" && (
+              <p className="text-xs">
+                {p.notifyError}
+              </p>
+            )}
+          </div>
+        )}
+
+      {/* LÍMITE PARA RECOGER */}
+
+      {active && (
+        <p className="text-xs">
+          {fill(
+            p.pickupChargeNote,
+            {
+              time: at(
+                hold.pickupBy,
+              ),
+            },
+          )}
+        </p>
+      )}
     </div>
   );
 }

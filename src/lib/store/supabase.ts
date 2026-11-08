@@ -6,6 +6,7 @@ import {
   type SupabaseClient,
 } from "@supabase/supabase-js";
 
+
 import type { Dish, Ingredient } from "../inventory";
 
 import {
@@ -25,9 +26,13 @@ import type {
   Watch,
 } from "./types";
 
-// Supabase-backed store.
-// Runs on the server using the service role key.
-// Stock changes use SQL functions to remain atomic.
+// ==========================================
+// TODAVÍA HAY - SUPABASE
+// ==========================================
+
+// Los pedidos nuevos se confirman sin PayPal.
+// Los pagos se registran cuando el negocio
+// valida la entrega y selecciona un método.
 
 let client: SupabaseClient | null = null;
 
@@ -40,7 +45,7 @@ function db(): SupabaseClient {
         persistSession: false,
         autoRefreshToken: false,
       },
-    }
+    },
   ));
 }
 
@@ -49,16 +54,20 @@ function check<T>(
     data: T;
     error: { message: string } | null;
   },
-  what: string
+  what: string,
 ): T {
   if (r.error) {
     throw new Error(
-      `Supabase ${what}: ${r.error.message}`
+      `Supabase ${what}: ${r.error.message}`,
     );
   }
 
   return r.data;
 }
+
+// ==========================================
+// TIPOS DE BASE DE DATOS
+// ==========================================
 
 type BusinessRow = {
   id: string;
@@ -71,8 +80,6 @@ type BusinessRow = {
   stamps_per_reward: number;
   reward_dish_id: string | null;
   updated_at: string;
-
-  // Personalización individual del negocio
   settings: import("../stall").StallSettings | null;
 };
 
@@ -83,8 +90,12 @@ type ReservationRow = {
   status: ReservationStatus;
   pickup_by: string;
   created_at: string;
+
+  // Campos históricos: no se utilizan
+  // para cobrar pedidos nuevos.
   paypal_order_id: string | null;
   paypal_authorization_id: string | null;
+
   payer_id: string | null;
   pickup_code?: string | null;
   order_number?: number | null;
@@ -96,16 +107,20 @@ type ReservationRow = {
   confirm_asked_at?: string | null;
   prep_alerted_at?: string | null;
   customer_id?: string | null;
+
   reservation_items: {
     dish_id: string;
     qty: number;
   }[];
 };
 
+// ==========================================
+// COLUMNAS DE RESERVACIONES
+// ==========================================
+
 const RESERVATION_COLS_BASE =
   "id, customer_name, total_cents, status, pickup_by, created_at, paypal_order_id, paypal_authorization_id, payer_id, reservation_items(dish_id, qty)";
-// pickup_code (migration 0008) and order_number (0009) load only once their migration ran.
-// Pickup columns come from migration 0014.
+
 const RESERVATION_COLS = [
   `${RESERVATION_COLS_BASE}, pickup_code, order_number, pickup_mode, pickup_at, confirmed_at, ready_at, no_show, confirm_asked_at, prep_alerted_at, customer_id`,
   `${RESERVATION_COLS_BASE}, pickup_code, order_number, pickup_mode, pickup_at, confirmed_at, ready_at, no_show, confirm_asked_at, prep_alerted_at`,
@@ -114,45 +129,72 @@ const RESERVATION_COLS = [
   RESERVATION_COLS_BASE,
 ];
 
-async function withPickupCode<R extends { error: { message: string } | null }>(
+async function withPickupCode<
+  R extends {
+    error: { message: string } | null;
+  },
+>(
   query: (cols: string) => PromiseLike<R>,
 ): Promise<R> {
   let result = await query(RESERVATION_COLS[0]);
+
   for (const cols of RESERVATION_COLS.slice(1)) {
-    if (!/pickup_code|order_number|pickup_mode|pickup_at|confirmed_at|ready_at|no_show|confirm_asked_at|prep_alerted_at|customer_id/.test(result.error?.message ?? "")) break;
+    const missing =
+      /pickup_code|order_number|pickup_mode|pickup_at|confirmed_at|ready_at|no_show|confirm_asked_at|prep_alerted_at|customer_id/;
+
+    if (!missing.test(result.error?.message ?? "")) {
+      break;
+    }
+
     result = await query(cols);
   }
+
   return result;
 }
 
+// ==========================================
+// CONVERTIR RESERVACIONES
+// ==========================================
+
 const toReservation = (
-  r: ReservationRow
+  r: ReservationRow,
 ): Reservation => ({
   id: r.id,
   customerName: r.customer_name,
   totalCents: r.total_cents,
   status: r.status,
+
   pickupBy: new Date(r.pickup_by).toISOString(),
   createdAt: new Date(r.created_at).toISOString(),
+
   paypalOrderId: r.paypal_order_id,
-  paypalAuthorizationId:
-    r.paypal_authorization_id,
+  paypalAuthorizationId: r.paypal_authorization_id,
   payerId: r.payer_id,
+
   pickupCode: r.pickup_code ?? null,
   orderNumber: r.order_number ?? null,
   pickupMode: r.pickup_mode ?? "asap",
-  pickupAt: r.pickup_at ? new Date(r.pickup_at).toISOString() : null,
+
+  pickupAt: r.pickup_at
+    ? new Date(r.pickup_at).toISOString()
+    : null,
+
   confirmedAt: r.confirmed_at ?? null,
   readyAt: r.ready_at ?? null,
   noShow: r.no_show ?? false,
   confirmAskedAt: r.confirm_asked_at ?? null,
   prepAlertedAt: r.prep_alerted_at ?? null,
   customerId: r.customer_id ?? null,
+
   lines: r.reservation_items.map((line) => ({
     dishId: line.dish_id,
     qty: line.qty,
   })),
 });
+
+// ==========================================
+// ERRORES DE INVENTARIO
+// ==========================================
 
 function stockError(error: {
   message: string;
@@ -170,9 +212,7 @@ function stockError(error: {
     };
   }
 
-  if (
-    error.message.includes("insufficient_stock")
-  ) {
+  if (error.message.includes("insufficient_stock")) {
     const detail = error.details ?? "";
 
     return {
@@ -187,8 +227,12 @@ function stockError(error: {
   return null;
 }
 
+// ==========================================
+// BUSCAR NEGOCIO
+// ==========================================
+
 async function businessBySlug(
-  slug: string
+  slug: string,
 ): Promise<BusinessRow | null> {
   return check(
     await db()
@@ -196,7 +240,7 @@ async function businessBySlug(
       .select("*")
       .eq("slug", slug)
       .maybeSingle(),
-    "business"
+    "business",
   );
 }
 
@@ -206,7 +250,7 @@ async function activeOnly<
   },
 >(
   filtered: PromiseLike<R>,
-  all: () => PromiseLike<R>
+  all: () => PromiseLike<R>,
 ): Promise<R> {
   const result = await filtered;
 
@@ -215,11 +259,15 @@ async function activeOnly<
     : result;
 }
 
+// ==========================================
+// CARGAR INFORMACIÓN DEL NEGOCIO
+// ==========================================
+
 async function load(
-  b: BusinessRow
+  b: BusinessRow,
 ): Promise<StallState> {
   const recent = new Date(
-    Date.now() - 24 * 3600_000
+    Date.now() - 24 * 3600_000,
   ).toISOString();
 
   const ingredientsQ = () =>
@@ -233,7 +281,7 @@ async function load(
     db()
       .from("dishes")
       .select(
-        "id, name_es, name_en, image_url, price_cents, sold_out, sort, recipe_items(ingredient_id, qty)"
+        "id, name_es, name_en, image_url, price_cents, sold_out, sort, recipe_items(ingredient_id, qty)",
       )
       .eq("business_id", b.id)
       .order("sort");
@@ -242,12 +290,14 @@ async function load(
     await Promise.all([
       activeOnly(
         ingredientsQ().eq("archived", false),
-        ingredientsQ
+        ingredientsQ,
       ),
+
       activeOnly(
         dishesQ().eq("archived", false),
-        dishesQ
+        dishesQ,
       ),
+
       db()
         .from("days")
         .select("id, opened_at, opening_count")
@@ -257,6 +307,7 @@ async function load(
         })
         .limit(1)
         .maybeSingle(),
+
       withPickupCode((cols) =>
         db()
           .from("reservations")
@@ -272,17 +323,21 @@ async function load(
       []) as unknown as ReservationRow[]
   ).map(toReservation);
 
+  // ========================================
+  // RECOMPENSAS
+  // ========================================
+
   const payers = [
     ...new Set(
       reservations.flatMap((r) =>
-        r.payerId ? [r.payerId] : []
-      )
+        r.payerId ? [r.payerId] : [],
+      ),
     ),
   ];
 
   const stamps: Record<string, number> =
     Object.fromEntries(
-      payers.map((payer) => [payer, 0])
+      payers.map((payer) => [payer, 0]),
     );
 
   type CardRow = {
@@ -297,7 +352,7 @@ async function load(
       db()
         .from("stamp_cards")
         .select(
-          "payer_id, label, stamps, updated_at"
+          "payer_id, label, stamps, updated_at",
         )
         .eq("business_id", b.id)
         .order("updated_at", {
@@ -309,7 +364,7 @@ async function load(
         ? db()
             .from("stamp_cards")
             .select(
-              "payer_id, label, stamps, updated_at"
+              "payer_id, label, stamps, updated_at",
             )
             .eq("business_id", b.id)
             .in("payer_id", payers)
@@ -341,9 +396,13 @@ async function load(
     label: card.label,
     stamps: card.stamps,
     updatedAt: new Date(
-      card.updated_at
+      card.updated_at,
     ).toISOString(),
   }));
+
+  // ========================================
+  // INVENTARIO
+  // ========================================
 
   const ingredients: Ingredient[] = (
     check(ingRes, "ingredients") ?? []
@@ -354,9 +413,9 @@ async function load(
     stock: Number(ingredient.stock),
   }));
 
-  // =========================================
-  // DISHES WITH IMAGES
-  // =========================================
+  // ========================================
+  // PLATILLOS
+  // ========================================
 
   const dishes: Dish[] = (
     check(dishRes, "dishes") ?? []
@@ -364,12 +423,10 @@ async function load(
     id: dish.id,
     nameEs: dish.name_es,
     nameEn: dish.name_en,
-
-    // The image is loaded from Supabase.
     imageUrl: dish.image_url ?? null,
-
     priceCents: dish.price_cents,
     soldOut: dish.sold_out,
+
     recipe: (
       dish.recipe_items as {
         ingredient_id: string;
@@ -380,6 +437,10 @@ async function load(
       qty: Number(recipe.qty),
     })),
   }));
+
+  // ========================================
+  // JORNADA
+  // ========================================
 
   const day = check(dayRes, "day") as {
     id: string;
@@ -394,20 +455,19 @@ async function load(
       await db()
         .from("sales")
         .select(
-          "id, method, total_cents, created_at, sale_items(dish_id, qty)"
+          "id, method, total_cents, created_at, sale_items(dish_id, qty)",
         )
         .eq("day_id", day.id)
         .order("created_at"),
-      "sales"
+      "sales",
     );
 
     sales = (rows ?? []).map((sale) => ({
       id: sale.id,
       method: sale.method as PaymentMethod,
       totalCents: sale.total_cents,
-      at: new Date(
-        sale.created_at
-      ).toISOString(),
+      at: new Date(sale.created_at).toISOString(),
+
       lines: (
         sale.sale_items as {
           dish_id: string;
@@ -420,6 +480,10 @@ async function load(
     }));
   }
 
+  // ========================================
+  // ESTADO COMPLETO
+  // ========================================
+
   return {
     slug: b.slug,
     name: b.name,
@@ -427,25 +491,31 @@ async function load(
     currency: b.currency,
     timezone: b.timezone,
     isOpen: b.is_open,
+
     openedAt: day?.opened_at
       ? new Date(day.opened_at).toISOString()
       : null,
+
     updatedAt: new Date(
-      b.updated_at
+      b.updated_at,
     ).toISOString(),
+
     dishes,
     ingredients,
+
     openingCount: Object.fromEntries(
       Object.entries(
-        day?.opening_count ?? {}
+        day?.opening_count ?? {},
       ).map(([key, value]) => [
         key,
         Number(value),
-      ])
+      ]),
     ),
+
     sales,
     holdMinutes: b.hold_minutes,
     reservations,
+
     loyalty: {
       stampsPerReward: b.stamps_per_reward,
       rewardDishId: b.reward_dish_id,
@@ -455,8 +525,12 @@ async function load(
   };
 }
 
+// ==========================================
+// OBTENER NEGOCIO O LANZAR ERROR
+// ==========================================
+
 async function must(
-  slug: string
+  slug: string,
 ): Promise<BusinessRow> {
   const business = await businessBySlug(slug);
 
@@ -467,24 +541,41 @@ async function must(
   return business;
 }
 
+// ==========================================
+// CONVERTIR PRODUCTOS A FORMATO SQL
+// ==========================================
+
 const toDbLines = (
   lines: {
     dishId: string;
     qty: number;
-  }[]
+  }[],
 ) =>
   lines.map((line) => ({
     dish_id: line.dishId,
     qty: line.qty,
   }));
 
+// ==========================================
+// ALMACENAMIENTO PRINCIPAL
+// ==========================================
+
 export const supabaseStore: StallStore = {
+  // ========================================
+  // CONSULTAR NEGOCIO
+  // ========================================
+
   async get(slug) {
     const business = await businessBySlug(slug);
+
     return business
       ? load(business)
       : null;
   },
+
+  // ========================================
+  // ABRIR JORNADA
+  // ========================================
 
   async open(slug, counts) {
     const business = await must(slug);
@@ -494,15 +585,15 @@ export const supabaseStore: StallStore = {
         p_business: business.id,
         p_counts: counts,
       }),
-      "open_day"
+      "open_day",
     );
 
     return load(await must(slug));
   },
 
-  // =========================================
-  // HISTORICAL CASH-UP
-  // =========================================
+  // ========================================
+  // CERRAR JORNADA
+  // ========================================
 
   async close(slug) {
     const business = await must(slug);
@@ -525,14 +616,14 @@ export const supabaseStore: StallStore = {
         {
           p_business: business.id,
           p_snapshot: snapshot,
-        }
+        },
       ),
-      "close_day_with_snapshot"
+      "close_day_with_snapshot",
     ) as string;
 
     if (!dayId) {
       throw new Error(
-        "No se pudo guardar el cierre"
+        "No se pudo guardar el cierre",
       );
     }
 
@@ -542,10 +633,14 @@ export const supabaseStore: StallStore = {
     };
   },
 
+  // ========================================
+  // REGISTRAR VENTA DIRECTA
+  // ========================================
+
   async recordSale(
     slug,
     lines,
-    method
+    method,
   ): Promise<SaleResult> {
     const business = await must(slug);
 
@@ -555,7 +650,7 @@ export const supabaseStore: StallStore = {
         p_business: business.id,
         p_lines: toDbLines(lines),
         p_method: method,
-      }
+      },
     );
 
     if (result.error) {
@@ -569,7 +664,7 @@ export const supabaseStore: StallStore = {
       }
 
       throw new Error(
-        `Supabase record_sale: ${result.error.message}`
+        `Supabase record_sale: ${result.error.message}`,
       );
     }
 
@@ -579,10 +674,14 @@ export const supabaseStore: StallStore = {
     };
   },
 
+  // ========================================
+  // MARCAR PRODUCTO AGOTADO
+  // ========================================
+
   async setSoldOut(
     slug,
     dishId,
-    soldOut
+    soldOut,
   ) {
     const business = await must(slug);
 
@@ -594,22 +693,25 @@ export const supabaseStore: StallStore = {
         })
         .eq("id", dishId)
         .eq("business_id", business.id),
-      "sold_out"
+      "sold_out",
     );
 
     check(
       await db()
         .from("businesses")
         .update({
-          updated_at:
-            new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         })
         .eq("id", business.id),
-      "touch"
+      "touch",
     );
 
     return load(await must(slug));
   },
+
+  // ========================================
+  // REABASTECER INVENTARIO
+  // ========================================
 
   async restock(slug, adds) {
     const business = await must(slug);
@@ -619,7 +721,7 @@ export const supabaseStore: StallStore = {
       {
         p_business: business.id,
         p_adds: adds,
-      }
+      },
     );
 
     if (result.error) {
@@ -633,7 +735,7 @@ export const supabaseStore: StallStore = {
       }
 
       throw new Error(
-        `Supabase restock: ${result.error.message}`
+        `Supabase restock: ${result.error.message}`,
       );
     }
 
@@ -643,9 +745,9 @@ export const supabaseStore: StallStore = {
     };
   },
 
-  // =========================================
-  // SAVE MENU WITH IMAGE URL
-  // =========================================
+  // ========================================
+  // GUARDAR MENÚ
+  // ========================================
 
   async saveMenu(slug, menu) {
     const business = await must(slug);
@@ -654,37 +756,32 @@ export const supabaseStore: StallStore = {
       "save_menu",
       {
         p_business: business.id,
-
         p_ingredients: menu.ingredients,
 
-        p_dishes: menu.dishes.map(
-          (dish) => ({
-            id: dish.id,
-            name_es: dish.nameEs,
-            name_en: dish.nameEn,
-
-            // NEW: save the image URL.
-            image_url:
-              dish.imageUrl?.trim() || null,
-
-            price_cents: dish.priceCents,
-            recipe: dish.recipe,
-          })
-        ),
-      }
+        p_dishes: menu.dishes.map((dish) => ({
+          id: dish.id,
+          name_es: dish.nameEs,
+          name_en: dish.nameEn,
+          image_url:
+            dish.imageUrl?.trim() || null,
+          price_cents: dish.priceCents,
+          recipe: dish.recipe,
+        })),
+      },
     );
 
     if (result.error) {
       throw new Error(
-        `Supabase save_menu: ${result.error.message}`
+        `Supabase save_menu: ${result.error.message}`,
       );
     }
 
     return load(await must(slug));
   },
-    // =========================================
-  // SAVE BUSINESS SETTINGS
-  // =========================================
+
+  // ========================================
+  // GUARDAR CONFIGURACIÓN
+  // ========================================
 
   async saveSettings(slug, input) {
     const business = await must(slug);
@@ -711,15 +808,16 @@ export const supabaseStore: StallStore = {
 
     return load(await must(slug));
   },
-  // =========================================
-  // RESERVATIONS
-  // =========================================
+
+  // ========================================
+  // CREAR RESERVACIÓN
+  // ========================================
 
   async reserve(
     slug,
     customerName,
     lines,
-    pickupBy
+    pickupBy,
   ): Promise<ReserveResult> {
     const business = await must(slug);
 
@@ -729,9 +827,8 @@ export const supabaseStore: StallStore = {
         p_business: business.id,
         p_customer: customerName,
         p_lines: toDbLines(lines),
-        p_pickup_by:
-          pickupBy.toISOString(),
-      }
+        p_pickup_by: pickupBy.toISOString(),
+      },
     );
 
     if (result.error) {
@@ -745,19 +842,18 @@ export const supabaseStore: StallStore = {
       }
 
       throw new Error(
-        `Supabase reserve: ${result.error.message}`
+        `Supabase reserve: ${result.error.message}`,
       );
     }
 
-    const created =
-      await this.getReservation(
-        slug,
-        result.data as string
-      );
+    const created = await this.getReservation(
+      slug,
+      result.data as string,
+    );
 
     if (!created) {
       throw new Error(
-        "Supabase reserve: reservation not found after insert"
+        "Supabase reserve: reservation not found after insert",
       );
     }
 
@@ -766,6 +862,10 @@ export const supabaseStore: StallStore = {
       reservation: created,
     };
   },
+
+  // ========================================
+  // CONSULTAR RESERVACIÓN
+  // ========================================
 
   async getReservation(slug, id) {
     const business = await must(slug);
@@ -779,7 +879,7 @@ export const supabaseStore: StallStore = {
           .eq("business_id", business.id)
           .maybeSingle(),
       ),
-      "reservation"
+      "reservation",
     ) as unknown as ReservationRow | null;
 
     return row
@@ -787,10 +887,14 @@ export const supabaseStore: StallStore = {
       : null;
   },
 
+  // ========================================
+  // COMPATIBILIDAD CON PEDIDOS ANTIGUOS
+  // ========================================
+
   async setPayPalOrder(
     slug,
     id,
-    orderId
+    orderId,
   ) {
     const business = await must(slug);
 
@@ -801,77 +905,118 @@ export const supabaseStore: StallStore = {
           paypal_order_id: orderId,
         })
         .eq("id", id)
-        .eq(
-          "business_id",
-          business.id
-        ),
-      "set order"
+        .eq("business_id", business.id),
+      "set order",
     );
   },
+
+  // ========================================
+  // CONFIRMAR PEDIDO SIN PAYPAL
+  // ========================================
 
   async markAuthorized(
     slug,
     id,
-    authorizationId,
-    payerId
+    _authorizationId,
+    payerId,
   ) {
     const business = await must(slug);
 
-    check(
-      await db()
-        .from("reservations")
-        .update({
-          status: "authorized",
-          paypal_authorization_id:
-            authorizationId,
-          payer_id: payerId,
-          updated_at:
-            new Date().toISOString(),
-        })
-        .eq("id", id)
-        .eq(
-          "business_id",
-          business.id
-        )
-        .eq("status", "held"),
-      "authorize"
-    );
+    // El pedido pasa de held a authorized.
+    // Esto NO significa que ya esté pagado.
+    //
+    // Los campos de PayPal permanecen en NULL.
+    // Se conserva payer_id para recompensas.
 
-    check(
-      await db()
-        .from("businesses")
-        .update({
-          updated_at:
-            new Date().toISOString(),
-        })
-        .eq("id", business.id),
-      "touch"
-    );
+    const result = await db()
+      .from("reservations")
+      .update({
+        status: "authorized",
+        payer_id: payerId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .eq("business_id", business.id)
+      .eq("status", "held")
+      .select("id")
+      .maybeSingle();
+
+    check(result, "confirm reservation");
+
+    if (!result.data) {
+      throw new Error(
+        "La reservación no está pendiente de confirmación.",
+      );
+    }
   },
+
+  // ========================================
+  // ENTREGAR PEDIDO Y REGISTRAR PAGO
+  // ========================================
 
   async markDelivered(
     slug,
-    id
+    id,
+    method,
   ) {
-    await must(slug);
+    if (
+      method !== "cash" &&
+      method !== "card" &&
+      method !== "transfer"
+    ) {
+      return false;
+    }
+
+    const business = await must(slug);
+
+    // Comprobar que el pedido pertenece
+    // al negocio y está confirmado.
+
+    const current = check(
+      await db()
+        .from("reservations")
+        .select("id, status")
+        .eq("id", id)
+        .eq("business_id", business.id)
+        .maybeSingle(),
+      "get delivery reservation",
+    );
+
+    if (
+      !current ||
+      current.status !== "authorized"
+    ) {
+      return false;
+    }
+
+    // El servidor debe haber validado el NIP
+    // y los permisos antes de llamar al método.
+    //
+    // Registrar pago y entrega mediante
+    // la función SQL transaccional.
 
     const saleId = check(
       await db().rpc(
-        "deliver_reservation",
+        "deliver_reservation_with_method",
         {
           p_reservation: id,
-        }
+          p_method: method,
+        },
       ),
-      "deliver"
+      "deliver",
     );
 
     return saleId != null;
   },
 
+  // ========================================
+  // CANCELAR RESERVACIÓN
+  // ========================================
+
   async release(
     slug,
     id,
-    status
+    status,
   ) {
     await must(slug);
 
@@ -882,20 +1027,20 @@ export const supabaseStore: StallStore = {
           {
             p_reservation: id,
             p_status: status,
-          }
+          },
         ),
-        "release"
-      )
+        "release",
+      ),
     );
   },
 
-  // =========================================
-  // LOYALTY AND STAMP CARDS
-  // =========================================
+  // ========================================
+  // CONSULTAR SELLOS
+  // ========================================
 
   async stamps(
     slug,
-    cardId
+    cardId,
   ) {
     const business = await must(slug);
 
@@ -903,13 +1048,10 @@ export const supabaseStore: StallStore = {
       await db()
         .from("stamp_cards")
         .select("stamps")
-        .eq(
-          "business_id",
-          business.id
-        )
+        .eq("business_id", business.id)
         .eq("payer_id", cardId)
         .maybeSingle(),
-      "stamp card"
+      "stamp card",
     ) as {
       stamps: number;
     } | null;
@@ -917,10 +1059,14 @@ export const supabaseStore: StallStore = {
     return card?.stamps ?? 0;
   },
 
+  // ========================================
+  // AGREGAR SELLOS
+  // ========================================
+
   async addStamp(
     slug,
     cardId,
-    label
+    label,
   ) {
     const business = await must(slug);
 
@@ -931,15 +1077,19 @@ export const supabaseStore: StallStore = {
           p_business: business.id,
           p_card: cardId,
           p_label: label ?? "",
-        }
+        },
       ),
-      "add_stamp"
+      "add_stamp",
     ) as number;
   },
 
+  // ========================================
+  // CANJEAR RECOMPENSA
+  // ========================================
+
   async redeem(
     slug,
-    cardId
+    cardId,
   ): Promise<RedeemResult> {
     const business = await must(slug);
 
@@ -948,13 +1098,13 @@ export const supabaseStore: StallStore = {
       {
         p_business: business.id,
         p_payer: cardId,
-      }
+      },
     );
 
     if (result.error) {
       if (
         result.error.message.includes(
-          "not_enough_stamps"
+          "not_enough_stamps",
         )
       ) {
         return {
@@ -965,7 +1115,7 @@ export const supabaseStore: StallStore = {
 
       if (
         result.error.message.includes(
-          "no_reward"
+          "no_reward",
         )
       ) {
         return {
@@ -974,9 +1124,7 @@ export const supabaseStore: StallStore = {
         };
       }
 
-      const error = stockError(
-        result.error
-      );
+      const error = stockError(result.error);
 
       if (error) {
         return {
@@ -986,24 +1134,23 @@ export const supabaseStore: StallStore = {
       }
 
       throw new Error(
-        `Supabase redeem_reward: ${result.error.message}`
+        `Supabase redeem_reward: ${result.error.message}`,
       );
     }
 
     return {
       ok: true,
-      stampsLeft:
-        result.data as number,
+      stampsLeft: result.data as number,
     };
   },
 
-  // =========================================
-  // PUSH NOTIFICATIONS
-  // =========================================
+  // ========================================
+  // SUSCRIPCIONES DE NOTIFICACIONES
+  // ========================================
 
   async addWatch(
     slug,
-    watch
+    watch,
   ) {
     const business = await must(slug);
 
@@ -1017,16 +1164,20 @@ export const supabaseStore: StallStore = {
           p_p256dh: watch.p256dh,
           p_auth: watch.auth,
           p_lang: watch.lang,
-        }
+        },
       ),
-      "add_watch"
+      "add_watch",
     );
   },
+
+  // ========================================
+  // AVISOS DE DISPONIBILIDAD
+  // ========================================
 
   async claimWatches(
     slug,
     open,
-    dishIds
+    dishIds,
   ): Promise<Watch[]> {
     const business = await must(slug);
 
@@ -1037,9 +1188,9 @@ export const supabaseStore: StallStore = {
           p_business: business.id,
           p_open: open,
           p_dishes: dishIds,
-        }
+        },
       ),
-      "claim_watches"
+      "claim_watches",
     ) as {
       dish_id: string | null;
       endpoint: string;
@@ -1048,41 +1199,84 @@ export const supabaseStore: StallStore = {
       lang: "es" | "en";
     }[];
 
-    return (rows ?? []).map(
-      (watch) => ({
-        dishId: watch.dish_id,
-        endpoint: watch.endpoint,
-        p256dh: watch.p256dh,
-        auth: watch.auth,
-        lang: watch.lang,
-      })
-    );
+    return (rows ?? []).map((watch) => ({
+      dishId: watch.dish_id,
+      endpoint: watch.endpoint,
+      p256dh: watch.p256dh,
+      auth: watch.auth,
+      lang: watch.lang,
+    }));
   },
 
-  // =========================================
-  // RECOGER
-  // =========================================
+  // ========================================
+  // ACTUALIZAR DATOS DE RECOGIDA
+  // ========================================
 
-  async updatePickup(slug, id, patch) {
+  async updatePickup(
+    slug,
+    id,
+    patch,
+  ) {
     const business = await must(slug);
+
     const cols: Record<string, unknown> = {};
-    if (patch.pickupMode !== undefined) cols.pickup_mode = patch.pickupMode;
-    if (patch.pickupAt !== undefined) cols.pickup_at = patch.pickupAt;
-    if (patch.confirmedAt !== undefined) cols.confirmed_at = patch.confirmedAt;
-    if (patch.readyAt !== undefined) cols.ready_at = patch.readyAt;
-    if (patch.noShow !== undefined) cols.no_show = patch.noShow;
-    if (patch.confirmAskedAt !== undefined) cols.confirm_asked_at = patch.confirmAskedAt;
-    if (patch.prepAlertedAt !== undefined) cols.prep_alerted_at = patch.prepAlertedAt;
-    if (patch.customerId !== undefined) cols.customer_id = patch.customerId;
-    if (!Object.keys(cols).length) return;
+
+    if (patch.pickupMode !== undefined) {
+      cols.pickup_mode = patch.pickupMode;
+    }
+
+    if (patch.pickupAt !== undefined) {
+      cols.pickup_at = patch.pickupAt;
+    }
+
+    if (patch.confirmedAt !== undefined) {
+      cols.confirmed_at = patch.confirmedAt;
+    }
+
+    if (patch.readyAt !== undefined) {
+      cols.ready_at = patch.readyAt;
+    }
+
+    if (patch.noShow !== undefined) {
+      cols.no_show = patch.noShow;
+    }
+
+    if (patch.confirmAskedAt !== undefined) {
+      cols.confirm_asked_at = patch.confirmAskedAt;
+    }
+
+    if (patch.prepAlertedAt !== undefined) {
+      cols.prep_alerted_at = patch.prepAlertedAt;
+    }
+
+    if (patch.customerId !== undefined) {
+      cols.customer_id = patch.customerId;
+    }
+
+    if (!Object.keys(cols).length) {
+      return;
+    }
+
     check(
-      await db().from("reservations").update(cols).eq("id", id).eq("business_id", business.id),
+      await db()
+        .from("reservations")
+        .update(cols)
+        .eq("id", id)
+        .eq("business_id", business.id),
       "update pickup",
     );
   },
 
-  async savePush(slug, target) {
+  // ========================================
+  // GUARDAR NOTIFICACIONES PUSH
+  // ========================================
+
+  async savePush(
+    slug,
+    target,
+  ) {
     const business = await must(slug);
+
     check(
       await db()
         .from("pickup_push")
@@ -1095,26 +1289,47 @@ export const supabaseStore: StallStore = {
             auth: target.auth,
             lang: target.lang,
           },
-          { onConflict: "business_id,reservation_id,endpoint" },
+          {
+            onConflict:
+              "business_id,reservation_id,endpoint",
+          },
         ),
       "save push",
     );
   },
 
-  async pushTargets(slug, reservationId) {
+  // ========================================
+  // CONSULTAR NOTIFICACIONES PUSH
+  // ========================================
+
+  async pushTargets(
+    slug,
+    reservationId,
+  ) {
     const business = await must(slug);
+
     let q = db()
       .from("pickup_push")
-      .select("reservation_id, endpoint, p256dh, auth, lang")
+      .select(
+        "reservation_id, endpoint, p256dh, auth, lang",
+      )
       .eq("business_id", business.id);
-    q = reservationId ? q.eq("reservation_id", reservationId) : q.is("reservation_id", null);
-    const rows = check(await q, "push targets") as {
+
+    q = reservationId
+      ? q.eq("reservation_id", reservationId)
+      : q.is("reservation_id", null);
+
+    const rows = check(
+      await q,
+      "push targets",
+    ) as {
       reservation_id: string | null;
       endpoint: string;
       p256dh: string;
       auth: string;
       lang: "es" | "en";
     }[];
+
     return rows.map((r) => ({
       reservationId: r.reservation_id,
       endpoint: r.endpoint,
@@ -1124,10 +1339,22 @@ export const supabaseStore: StallStore = {
     }));
   },
 
-  async dropPush(slug, endpoint) {
+  // ========================================
+  // ELIMINAR SUSCRIPCIÓN PUSH
+  // ========================================
+
+  async dropPush(
+    slug,
+    endpoint,
+  ) {
     const business = await must(slug);
+
     check(
-      await db().from("pickup_push").delete().eq("business_id", business.id).eq("endpoint", endpoint),
+      await db()
+        .from("pickup_push")
+        .delete()
+        .eq("business_id", business.id)
+        .eq("endpoint", endpoint),
       "drop push",
     );
   },

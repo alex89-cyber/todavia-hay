@@ -2,7 +2,9 @@
 "use client";
 
 import Image from "next/image";
+import PurchaseRestockDialog from "@/components/PurchaseRestockDialog";
 import { OwnerOperationsPanel } from "@/components/OwnerOperationsPanel";
+import ActiveTablesSummary from "@/components/ActiveTablesSummary";
 import OwnerRewardPinCard from "@/components/OwnerRewardPinCard";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -12,6 +14,7 @@ import { clock, fill, money, qty } from "@/lib/format";
 import { menuAvailability } from "@/lib/inventory";
 import { kitchenStage, needsConfirmation, pickupSettings, prepStartsAt, type KitchenStage } from "@/lib/pickup";
 import { subscribePush } from "@/lib/client-push";
+import type { DeliveryPaymentMethod } from "@/lib/payment-methods";
 
 
 import {
@@ -444,27 +447,76 @@ export function OwnerPanel({
           const r = await act({ action: "ready", reservationId: id });
           setToast(r?.error ? { kind: "bad", text: o.paypalError } : { kind: "ok", text: o.readyDone });
         }}
-        onDeliver={async (id, proof) => {
-          const r = await act({
-            action: "deliver",
-            reservationId: id,
-            ...proof,
-          });
 
-          // A wrong code or last name stays in the dialog for another try.
-          if (r?.error === "wrong_code" || r?.error === "wrong_last_name") return r.error;
-          if (r?.error) {
-            setToast({
-              kind: "bad",
-              text: o.paypalError,
-            });
-          } else if (r) {
+        onDeliver={async (id, proof, method) => {
+          setBusy(true);
+
+          try {
+            const response = await fetch(
+              `/api/stalls/${view.slug}/deliver`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  reservationId: id,
+                  ...proof,
+                  method,
+                }),
+              },
+            );
+
+            const result = await response.json();
+
+            if (!response.ok) {
+              const error =
+                typeof result.error === "string"
+                  ? result.error
+                  : "delivery_failed";
+
+              if (
+                error !== "wrong_code" &&
+                error !== "wrong_last_name"
+              ) {
+                setToast({
+                  kind: "bad",
+                  text: es
+                    ? "No se pudo registrar la entrega."
+                    : "Could not record delivery.",
+                });
+              }
+
+              return error;
+            }
+
+            const updated = await fetch(
+              `/api/stalls/${view.slug}?view=owner`,
+              { cache: "no-store" },
+            );
+
+            if (updated.ok) {
+              setView(await updated.json());
+            }
+
             setToast({
               kind: "ok",
               text: o.delivered,
             });
+
+            return null;
+          } catch {
+            setToast({
+              kind: "bad",
+              text: es
+                ? "Error de conexión"
+                : "Connection error",
+            });
+
+            return "delivery_failed";
+          } finally {
+            setBusy(false);
           }
-          return null;
         }}
         onCancel={async (id) => {
           const r = await act({
@@ -512,6 +564,14 @@ export function OwnerPanel({
           />
         }
       />
+            
+            
+      {/* RESUMEN DE MESAS PARA EL DUEÑO */}
+      <ActiveTablesSummary
+        slug={view.slug}
+        lang={lang}
+      />
+
 
       {/* PUNTO DE VENTA */}
       <div className="px-4 pt-8 sm:px-6 lg:px-8">
@@ -692,7 +752,8 @@ export function OwnerPanel({
       {/* ACCIONES DE SESIÓN */}
       {canSignOut && (
         <footer className="mt-8 flex flex-col items-center gap-3 px-4 text-center text-xs text-muted">
-          <button
+          {canSignOut && (
+            <button
               type="button"
               onClick={async () => {
                 await fetch("/api/owner/login", {
@@ -705,6 +766,7 @@ export function OwnerPanel({
             >
               {o.signOut}
             </button>
+          )}
         </footer>
       )}
 
@@ -862,36 +924,46 @@ export function OwnerPanel({
         />
       )}
 
+            
       {restocking && (
-        <RestockDialog
-          view={view}
-          t={t}
-          lang={lang}
-          busy={busy}
-          onCancel={() =>
-            setRestocking(false)
-          }
-          onRestock={async (adds) => {
-            const r = await act({
-              action: "restock",
-              adds,
+        <PurchaseRestockDialog
+          slug={view.slug}
+          ingredients={view.ingredients}
+          onCancel={() => setRestocking(false)}
+          onSuccess={async () => {
+            setRestocking(false);
+
+            setToast({
+              kind: "ok",
+              text: "Compra registrada e inventario actualizado.",
             });
 
-            if (r?.error === "closed") {
-              setToast({
-                kind: "bad",
-                text: o.closedError,
-              });
-            } else if (r && !r.error) {
-              setRestocking(false);
-              setToast({
-                kind: "ok",
-                text: o.restocked,
-              });
+            try {
+              const response = await fetch(
+                `/api/stalls/${view.slug}?view=owner`,
+                {
+                  cache: "no-store",
+                }
+              );
+
+              if (response.ok) {
+                const updatedView = await response.json();
+                setView(updatedView);
+              } else {
+                console.error(
+                  "No se pudo actualizar el inventario visible."
+                );
+              }
+            } catch (error) {
+              console.error(
+                "La compra se guardó, pero no se pudo actualizar el panel:",
+                error
+              );
             }
           }}
         />
       )}
+
 
       {cashUp && (
         <CashUpDialog
@@ -1169,6 +1241,11 @@ function CashUpDialog({
             </b>
           </span>
 
+          <span>
+            Transferencia:{" "}
+            <b>{fmt(cashUp.byMethod.transfer)}</b>
+          </span>
+
           {cashUp.byMethod.paypal > 0 && (
             <span>
               PayPal:{" "}
@@ -1291,6 +1368,7 @@ function Reservations({
   onDeliver: (
     id: string,
     proof: { code?: string; lastName?: string },
+    method: DeliveryPaymentMethod,
   ) => Promise<string | null>;
   onCancel: (id: string) => void;
   onRedeem: (
@@ -1347,8 +1425,7 @@ function Reservations({
   };
 
   const deliver = (r: Reservation) => {
-    if (r.pickupCode) setHanding(r);
-    else void onDeliver(r.id, {});
+    setHanding(r);
   };
 
   const done = view.reservations
@@ -1489,8 +1566,13 @@ function Reservations({
           t={t}
           busy={busy}
           onClose={() => setHanding(null)}
-          onDeliver={async (proof) => {
-            const error = await onDeliver(handing.id, proof);
+          onDeliver={async (proof, method) => {
+            const error = await onDeliver(
+              handing.id,
+              proof,
+              method,
+            );
+
             if (!error) setHanding(null);
             return error;
           }}
@@ -1622,6 +1704,7 @@ function Reservations({
    ENTREGA CON CÓDIGO
 ======================================== */
 
+
 function HandOverDialog({
   r,
   items,
@@ -1635,265 +1718,217 @@ function HandOverDialog({
   t: Dictionary;
   busy: boolean;
   onClose: () => void;
-  onDeliver: (proof: { code?: string; lastName?: string }) => Promise<string | null>;
+  onDeliver: (
+    proof: { code?: string; lastName?: string },
+    method: DeliveryPaymentMethod,
+  ) => Promise<string | null>;
 }) {
   const o = t.owner;
+
   const [code, setCode] = useState("");
   const [lastName, setLastName] = useState("");
-  const [noCode, setNoCode] = useState(false);
+  const [noCode, setNoCode] = useState(!r.pickupCode);
+
+  const [method, setMethod] = useState<
+    DeliveryPaymentMethod | ""
+  >("");
+
   const [error, setError] = useState<string | null>(null);
-  // Bumped on each wrong try so the boxes shake again.
+
   const [tries, setTries] = useState(0);
 
-  async function submit(proof: { code?: string; lastName?: string }) {
-    const e = await onDeliver(proof);
-    if (!e) return;
-    setError(e === "wrong_code" ? o.handWrongCode : o.handWrongLastName);
-    setTries((n) => n + 1);
-    if (e === "wrong_code") setCode("");
-  }
+  const validProof = noCode
+    ? lastName.trim().length >= 2
+    : code.length === 4;
 
-  function type(value: string) {
-    const digits = value.replace(/\D/g, "").slice(0, 4);
-    setCode(digits);
+  async function submit(
+    event: React.FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+
+    if (!validProof || !method || busy) return;
+
     setError(null);
-    if (digits.length === 4) void submit({ code: digits });
+
+    const result = await onDeliver(
+      noCode
+        ? { lastName: lastName.trim() }
+        : { code },
+      method,
+    );
+
+    if (!result) return;
+
+    setError(
+      result === "wrong_code"
+        ? o.handWrongCode
+        : result === "wrong_last_name"
+          ? o.handWrongLastName
+          : "No se pudo registrar el pago y la entrega.",
+    );
+
+    setTries((n) => n + 1);
+
+    if (result === "wrong_code") {
+      setCode("");
+    }
   }
 
   return (
     <Sheet>
-      <p className="text-sm font-bold uppercase tracking-wide text-muted">{o.handTitle}</p>
-      <p className="mt-2 text-2xl font-black text-[#302018]">
-        {r.orderNumber && <span className="text-brand">#{r.orderNumber} · </span>}
-        {r.customerName}
-      </p>
-      <p className="mt-1 text-sm">{items}</p>
+      <form onSubmit={submit}>
+        <p className="text-sm font-bold uppercase text-muted">
+          {o.handTitle}
+        </p>
 
-      {!noCode ? (
-        <>
-          <p className="mt-6 font-semibold">{o.handAskCode}</p>
-          <label key={tries} className={`relative mt-3 flex justify-center gap-3 ${tries ? "animate-shake" : ""}`}>
-            {[0, 1, 2, 3].map((i) => (
-              <span
-                key={i}
-                className={`flex h-16 w-14 items-center justify-center rounded-2xl border-2 font-mono text-3xl font-black ${
-                  error ? "border-bad text-bad" : i === code.length ? "border-brand" : "border-line"
-                }`}
-              >
-                {code[i] ?? ""}
-              </span>
-            ))}
-            <input
-              autoFocus
-              value={code}
-              onChange={(e) => type(e.target.value)}
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              aria-label={o.handAskCode}
-              disabled={busy}
-              className="absolute inset-0 opacity-0"
-            />
-          </label>
-          {error && <p className="mt-3 text-center font-semibold text-bad">{error}</p>}
-          <button
-            type="button"
-            onClick={() => {
-              setNoCode(true);
-              setError(null);
-            }}
-            className="mt-5 block w-full text-center text-sm text-muted underline"
-          >
-            {o.handNoCode}
-          </button>
-        </>
-      ) : (
-        <form
-          className="mt-6 flex flex-col gap-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void submit({ lastName });
-          }}
-        >
-          <label className="flex flex-col gap-2">
-            <span className="font-semibold">{o.handAskLastName}</span>
-            <input
-              autoFocus
-              value={lastName}
-              onChange={(e) => {
-                setLastName(e.target.value);
+        <p className="mt-2 text-2xl font-black">
+          {r.orderNumber && (
+            <span className="text-brand">
+              #{r.orderNumber} ·{" "}
+            </span>
+          )}
+          {r.customerName}
+        </p>
+
+        <p className="mt-1 text-sm">{items}</p>
+
+        {!noCode ? (
+          <>
+            <p className="mt-6 font-semibold">
+              {o.handAskCode}
+            </p>
+
+            <label
+              key={tries}
+              className="relative mt-3 flex justify-center gap-3"
+            >
+              {[0, 1, 2, 3].map((i) => (
+                <span
+                  key={i}
+                  className="flex h-16 w-14 items-center justify-center rounded-2xl border-2 border-line font-mono text-3xl font-black"
+                >
+                  {code[i] ?? ""}
+                </span>
+              ))}
+
+              <input
+                autoFocus
+                value={code}
+                onChange={(e) => {
+                  setCode(
+                    e.target.value
+                      .replace(/\D/g, "")
+                      .slice(0, 4),
+                  );
+                  setError(null);
+                }}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                aria-label={o.handAskCode}
+                disabled={busy}
+                className="absolute inset-0 opacity-0"
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={() => {
+                setNoCode(true);
                 setError(null);
               }}
-              className={`rounded-xl border-2 bg-background px-4 py-3 text-lg ${error ? "border-bad" : "border-line"}`}
-            />
-          </label>
-          {error && <p key={tries} className="animate-shake font-semibold text-bad">{error}</p>}
-          <button
-            type="submit"
-            disabled={busy || lastName.trim().length < 2}
-            className="rounded-xl bg-ok px-5 py-3.5 font-bold text-white disabled:opacity-40"
-          >
-            {o.deliver}
-          </button>
-          <button type="button" onClick={() => setNoCode(false)} className="text-sm text-muted underline">
-            {o.handBackToCode}
-          </button>
-        </form>
-      )}
-
-      <button
-        type="button"
-        onClick={onClose}
-        className="mt-4 w-full rounded-xl border border-line px-5 py-3 font-semibold"
-      >
-        {o.handCancel}
-      </button>
-    </Sheet>
-  );
-}
-
-/* ========================================
-   REABASTECIMIENTO
-======================================== */
-
-function RestockDialog({
-  view,
-  t,
-  lang,
-  busy,
-  onCancel,
-  onRestock,
-}: {
-  view: OwnerView;
-  t: Dictionary;
-  lang: string;
-  busy: boolean;
-  onCancel: () => void;
-  onRestock: (
-    adds: Record<
-      string,
-      number
-    >,
-  ) => void;
-}) {
-  const o = t.owner;
-
-  const [adds, setAdds] =
-    useState<
-      Record<string, string>
-    >({});
-
-  const parsed = Object.fromEntries(
-    Object.entries(adds)
-      .map(
-        ([k, v]) =>
-          [
-            k,
-            Number(v) || 0,
-          ] as const,
-      )
-      .filter(([, n]) => n > 0),
-  );
-
-  return (
-    <Sheet>
-      <h2 className="text-2xl font-black">
-        {o.restockTitle}
-      </h2>
-
-      <p className="mt-2 text-sm text-muted">
-        {o.restockHint}
-      </p>
-
-      <form
-        className="mt-5 flex flex-col gap-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-
-          if (
-            Object.keys(parsed).length
-          ) {
-            onRestock(parsed);
-          }
-        }}
-      >
-        {view.ingredients.map((i) => (
-          <label
-            key={i.id}
-            className="flex items-center gap-3"
-          >
-            <span className="min-w-0 flex-1">
-              <span className="block font-semibold">
-                {i.name}
+              className="mt-4 w-full text-sm text-muted underline"
+            >
+              {o.handNoCode}
+            </button>
+          </>
+        ) : (
+          <>
+            <label className="mt-6 flex flex-col gap-2">
+              <span className="font-semibold">
+                {o.handAskLastName}
               </span>
 
-              <span
-                className={`mt-1 block text-xs ${
-                  i.stock <= 0
-                    ? "font-semibold text-bad"
-                    : "text-muted"
-                }`}
+              <input
+                autoFocus
+                value={lastName}
+                onChange={(e) => {
+                  setLastName(e.target.value);
+                  setError(null);
+                }}
+                className="rounded-xl border-2 border-line bg-background px-4 py-3"
+              />
+            </label>
+
+            {r.pickupCode && (
+              <button
+                type="button"
+                onClick={() => setNoCode(false)}
+                className="mt-3 text-sm text-muted underline"
               >
-                {fill(o.youHave, {
-                  n: qty(
-                    i.stock,
-                    i.unit,
-                    lang,
-                  ),
-                })}
-              </span>
-            </span>
+                {o.handBackToCode}
+              </button>
+            )}
+          </>
+        )}
 
-            <span className="text-lg text-muted">
-              +
-            </span>
+        <fieldset className="mt-6">
+          <legend className="mb-3 font-bold">
+            ¿Cómo pagó el cliente?
+          </legend>
 
-            <input
-              inputMode="decimal"
-              placeholder="0"
-              className="w-24 rounded-xl border border-line bg-background px-3 py-2 text-right text-lg tabular-nums"
-              value={
-                adds[i.id] ?? ""
-              }
-              onChange={(e) =>
-                setAdds((c) => ({
-                  ...c,
-                  [i.id]:
-                    e.target.value.replace(
-                      /[^\d.]/g,
-                      "",
-                    ),
-                }))
-              }
-              aria-label={`${o.restock} ${i.name} (${i.unit})`}
-            />
+          <div className="grid gap-2">
+            {([
+              ["cash", "Efectivo"],
+              ["card", "Terminal bancaria"],
+              ["transfer", "Transferencia"],
+            ] as const).map(([value, title]) => (
+              <label
+                key={value}
+                className="flex cursor-pointer items-center gap-3 rounded-xl border border-line p-3"
+              >
+                <input
+                  type="radio"
+                  name="payment-method"
+                  value={value}
+                  checked={method === value}
+                  onChange={() => setMethod(value)}
+                  disabled={busy}
+                />
 
-            <span className="w-8 text-sm text-muted">
-              {i.unit}
-            </span>
-          </label>
-        ))}
+                <span className="font-semibold">
+                  {title}
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
 
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-2xl border border-line py-3 font-semibold"
+        {error && (
+          <p
+            role="alert"
+            className="mt-3 font-semibold text-bad"
           >
-            {o.cancel}
-          </button>
+            {error}
+          </p>
+        )}
 
-          <button
-            type="submit"
-            disabled={
-              busy ||
-              !Object.keys(parsed)
-                .length
-            }
-            className="rounded-2xl bg-brand py-3 font-bold text-white disabled:opacity-50"
-          >
-            {o.restockConfirm}
-          </button>
-        </div>
+        <button
+          type="submit"
+          disabled={busy || !validProof || !method}
+          className="mt-5 w-full rounded-xl bg-ok px-5 py-3.5 font-bold text-white disabled:opacity-40"
+        >
+          {busy
+            ? "Registrando..."
+            : "Confirmar pago y entrega"}
+        </button>
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-3 w-full rounded-xl border border-line px-5 py-3 font-semibold"
+        >
+          {o.handCancel}
+        </button>
       </form>
     </Sheet>
   );
