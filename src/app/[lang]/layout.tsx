@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "¿Todavía hay?",
-  description: "Live menu, inventory and PayPal reservations for food stalls that sell until they run out.",
+  description: "Menú en vivo, inventario y apartados para puestos de comida que venden hasta que se acaba.",
   manifest: "/manifest.webmanifest",
   icons: { apple: "/apple-touch-icon.png" },
   appleWebApp: { capable: true, title: "¿Todavía hay?", statusBarStyle: "default" },
@@ -31,7 +31,16 @@ export default async function RootLayout({ children, params }: LayoutProps<"/[la
   if (!hasLocale(lang)) notFound();
   return (
     <html lang={lang} className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {/* Keep Chrome's install prompt if it fires before the page hydrates (see InstallAppButton). */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "window.addEventListener('beforeinstallprompt',function(e){window.__installPrompt=e});",
+          }}
+        />
+        {children}
+      </body>
     </html>
   );
 }

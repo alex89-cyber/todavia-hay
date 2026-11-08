@@ -4,7 +4,7 @@ import { store } from "@/lib/store";
 import { origin } from "@/lib/origin";
 
 // POST /api/stalls/:slug/card {phone}  A customer who pays at the counter looks
-// up their stamp card by phone. Remembered in the same cookie as PayPal cards.
+// up their stamp card by phone. Remembered in the same cookie as the stamp card.
 
 const Body = z.object({ phone: z.string().max(30) });
 

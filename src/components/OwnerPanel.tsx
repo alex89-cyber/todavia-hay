@@ -35,7 +35,6 @@ export function OwnerPanel({
   lang,
   timezone,
   t,
-  demo,
   canSignOut,
   vapidKey = null,
 }: {
@@ -43,7 +42,6 @@ export function OwnerPanel({
   lang: string;
   timezone: string;
   t: Dictionary;
-  demo: boolean;
   canSignOut: boolean;
   vapidKey?: string | null;
 }) {
@@ -447,7 +445,7 @@ export function OwnerPanel({
         }}
         onReady={async (id) => {
           const r = await act({ action: "ready", reservationId: id });
-          setToast(r?.error ? { kind: "bad", text: o.paypalError } : { kind: "ok", text: o.readyDone });
+          setToast(r?.error ? { kind: "bad", text: o.actionError } : { kind: "ok", text: o.readyDone });
         }}
 
         onDeliver={async (id, proof, method) => {
@@ -529,7 +527,7 @@ export function OwnerPanel({
           if (r?.error) {
             setToast({
               kind: "bad",
-              text: o.paypalError,
+              text: o.actionError,
             });
           } else if (r) {
             setToast({
@@ -752,24 +750,8 @@ export function OwnerPanel({
       )}
 
       {/* ACCIONES DE SESIÓN */}
-      {(demo || canSignOut) && (
+      {canSignOut && (
         <footer className="mt-8 flex flex-col items-center gap-3 px-4 text-center text-xs text-muted">
-          {demo && (
-            <>
-              <p>{o.demoNote}</p>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() =>
-                  act({ action: "reset" })
-                }
-                className="underline"
-              >
-                {o.reset}
-              </button>
-            </>
-          )}
-
           {canSignOut && (
             <button
               type="button"
@@ -1263,17 +1245,6 @@ function CashUpDialog({
             Transferencia:{" "}
             <b>{fmt(cashUp.byMethod.transfer)}</b>
           </span>
-
-          {cashUp.byMethod.paypal > 0 && (
-            <span>
-              PayPal:{" "}
-              <b>
-                {fmt(
-                  cashUp.byMethod.paypal,
-                )}
-              </b>
-            </span>
-          )}
         </div>
 
         <p className="mt-3 text-sm text-muted">

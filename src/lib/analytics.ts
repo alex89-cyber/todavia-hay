@@ -59,6 +59,7 @@ export type HistoricalSaleRow = {
   method: PaymentMethod;
   total_cents: number;
   created_at: string;
+  reservation_id?: string | null;
   sale_items: {
     dish_id: string;
     qty: number;
@@ -83,9 +84,6 @@ export type HistoricalInventoryRow = {
 // MÉTODOS DE PAGO
 // ==========================================
 
-// PayPal se conserva solo para consultar
-// las ventas históricas.
-
 const METHOD: Record<
   "es" | "en",
   Record<PaymentMethod, string>
@@ -94,13 +92,11 @@ const METHOD: Record<
     cash: "Efectivo",
     card: "Terminal bancaria",
     transfer: "Transferencia",
-    paypal: "PayPal (histórico)",
   },
   en: {
     cash: "Cash",
     card: "Card terminal",
     transfer: "Bank transfer",
-    paypal: "PayPal (historical)",
   },
 };
 
@@ -217,23 +213,6 @@ export function cashUpTables(
     s.timezone,
   );
 
-  // Las ventas históricas de PayPal
-  // se conservan en los reportes.
-  //
-  // El almacenamiento actual no incluye
-  // reservation_id en cada objeto Sale,
-  // por lo que no podemos identificar
-  // todas las ventas de reservaciones
-  // solamente mediante este campo.
-  const fromReservation = new Set(
-    s.sales
-      .filter(
-        (sale) =>
-          sale.method === "paypal",
-      )
-      .map((sale) => sale.id),
-  );
-
   // Construir detalle de ventas.
   const ventas: SaleLineRow[] =
     s.sales.flatMap((sale) =>
@@ -262,10 +241,9 @@ export function cashUpTables(
               ?.priceCents ?? 0
           ) * line.qty) / 100,
 
-        apartado:
-          fromReservation.has(
-            sale.id,
-          ),
+        apartado: Boolean(
+          sale.reservationId,
+        ),
       })),
     );
 
@@ -397,13 +375,9 @@ export function historicalCashUpTables({
               item.qty
             ) / 100,
 
-          // Compatibilidad con datos
-          // históricos anteriores.
-          // Los nuevos métodos no bastan
-          // para identificar una reserva.
-          apartado:
-            sale.method ===
-            "paypal",
+          apartado: Boolean(
+            sale.reservation_id,
+          ),
         };
       }),
     );

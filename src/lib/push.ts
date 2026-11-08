@@ -11,8 +11,12 @@ import type { Watch } from "./store/types";
 
 const publicKey = process.env.VAPID_PUBLIC_KEY ?? "";
 const privateKey = process.env.VAPID_PRIVATE_KEY ?? "";
-// Push services want a contact: mailto: or an https URL.
-const subject = process.env.VAPID_SUBJECT || "https://hachaton-paypal.onrender.com";
+// Push services want a contact: mailto: or an https URL. Set VAPID_SUBJECT
+// in production; the site URL is only a fallback.
+const subject =
+  process.env.VAPID_SUBJECT ||
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  "https://localhost";
 
 export const pushConfigured = () => Boolean(publicKey && privateKey);
 export const vapidPublicKey = () => (pushConfigured() ? publicKey : null);

@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "¿Todavía hay?",
     short_name: "¿Todavía hay?",
-    description: "Live menu, alerts and PayPal reservations for food stalls.",
+    description: "Menú en vivo, avisos y apartados para puestos de comida.",
     display: "standalone",
     background_color: "#fbf6ef",
     theme_color: "#a3341f",

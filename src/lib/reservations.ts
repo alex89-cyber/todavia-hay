@@ -30,7 +30,7 @@ import { store } from "./store";
 
 // ==========================================
 // TODAVÍA HAY
-// RESERVACIONES SIN PAYPAL
+// RESERVACIONES: SE PAGA AL RECOGER
 // TELÉFONO OPCIONAL
 // ==========================================
 
@@ -208,23 +208,20 @@ export async function startReservation(
   const reservation = result.reservation;
 
   // ========================================
-  // CONFIRMAR SIN PAYPAL
+  // CONFIRMAR PEDIDO
   // ========================================
 
   try {
     // "authorized" significa confirmado,
     // pero todavía NO pagado.
     //
-    // No se almacena autorización PayPal.
-    //
-    // El cuarto argumento es la tarjeta
+    // El tercer argumento es la tarjeta
     // de recompensas, o null si el
     // cliente no quiere asociarla.
 
     await store.markAuthorized(
       state.slug,
       reservation.id,
-      "",
       cardId,
     );
 

@@ -77,7 +77,18 @@ const TEXT = {
   },
 };
 
-export function AuthForm({ mode, lang, next }: { mode: AuthMode; lang: "es" | "en"; next: string }) {
+export function AuthForm({
+  mode,
+  lang,
+  next,
+  allowSignup = true,
+}: {
+  mode: AuthMode;
+  lang: "es" | "en";
+  next: string;
+  /** false: no "Crear cuenta" link (partner portal, accounts are invitation only). */
+  allowSignup?: boolean;
+}) {
   const t = TEXT[lang];
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -246,12 +257,14 @@ export function AuthForm({ mode, lang, next }: { mode: AuthMode; lang: "es" | "e
       <div className="mt-6 flex flex-col gap-2 text-center text-sm">
         {mode === "login" && (
           <>
-            <p>
-              {t.noAccount}{" "}
-              <Link className="font-semibold text-brand underline" href={`/${lang}/registro${q}`}>
-                {t.signup}
-              </Link>
-            </p>
+            {allowSignup && (
+              <p>
+                {t.noAccount}{" "}
+                <Link className="font-semibold text-brand underline" href={`/${lang}/registro${q}`}>
+                  {t.signup}
+                </Link>
+              </p>
+            )}
             <Link className="text-muted underline" href={`/${lang}/recuperar${q}`}>
               {t.forgotLink}
             </Link>

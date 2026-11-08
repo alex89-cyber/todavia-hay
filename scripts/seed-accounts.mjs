@@ -199,7 +199,7 @@ async function history(userId, name, slug, orders) {
       "venta",
       await sb
         .from("sales")
-        .insert({ business_id: b.id, method: "paypal", total_cents: total, reservation_id: r.id, created_at: new Date(at.getTime() + 25 * 60_000).toISOString() })
+        .insert({ business_id: b.id, method: "card", total_cents: total, reservation_id: r.id, created_at: new Date(at.getTime() + 25 * 60_000).toISOString() })
         .select("id")
         .single(),
     );

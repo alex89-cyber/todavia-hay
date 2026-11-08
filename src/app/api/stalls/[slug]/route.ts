@@ -9,7 +9,6 @@ import {
   publicSnapshot,
 } from "@/lib/stall";
 
-import { PayPalError } from "@/lib/paypal";
 import { notifyWaiting } from "@/lib/push";
 
 import {
@@ -24,7 +23,6 @@ import { authEnabled } from "@/lib/auth/config";
 import { cardForPhone } from "@/lib/accounts";
 
 import {
-  demoMode,
   isOwner,
   unauthorized,
 } from "@/lib/owner-auth";
@@ -376,11 +374,6 @@ const Action = z.discriminatedUnion(
       action: z.literal("close"),
     }),
 
-    // REINICIAR DEMOSTRACIÓN
-    z.object({
-      action: z.literal("reset"),
-    }),
-
     // ======================================
     // GUARDAR MENÚ
     // ======================================
@@ -558,7 +551,6 @@ const MAY_BRING_BACK = new Set([
   "open",
   "soldOut",
   "cancelReservation",
-  "reset",
   "restock",
 ]);
 
@@ -958,29 +950,10 @@ export async function POST(
     }
 
     // ======================================
-    // REINICIAR DEMOSTRACIÓN
-    // ======================================
-
-    case "reset":
-      if (!demoMode()) {
-        return Response.json(
-          { error: "demo_off" },
-          { status: 403 },
-        );
-      }
-
-      return Response.json(
-        ownerView(
-          await store.reset(slug),
-        ),
-      );
-
-    // ======================================
     // ENTREGAR O CANCELAR APARTADO
     //
-    // Esta operación conserva el flujo
-    // original de PayPal y códigos de
-    // entrega de los apartados.
+    // Revisa el código de entrega
+    // de los apartados.
     // ======================================
 
     case "ready": {
@@ -1041,12 +1014,7 @@ export async function POST(
         );
 
         return Response.json(
-          {
-            error:
-              e instanceof PayPalError
-                ? "paypal"
-                : "failed",
-          },
+          { error: "failed" },
           { status: 502 },
         );
       }

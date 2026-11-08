@@ -42,7 +42,7 @@ import { accountCard } from "@/lib/accounts";
 // PÁGINA PÚBLICA DEL NEGOCIO
 // ==========================================
 //
-// - Pedidos sin PayPal
+// - Pedidos apartados
 // - Pago contra entrega
 // - NIP de recogida
 // - Tarjetas de recompensas
@@ -258,8 +258,6 @@ async function Stall({
 
 // Conserva compatibilidad con el parámetro
 // ?apartado=... de la aplicación.
-//
-// No realiza cobros por PayPal.
 //
 // Esta función solo lee el pedido.
 

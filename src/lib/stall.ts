@@ -14,12 +14,19 @@ import {
 // ==========================================
 
 // Métodos de pago aceptados.
-// PayPal permanece para ventas históricas.
 export type PaymentMethod =
   | "cash"
   | "card"
-  | "transfer"
-  | "paypal";
+  | "transfer";
+
+/** Lee el método guardado; un valor desconocido cuenta como tarjeta. */
+export function paymentMethod(
+  value: string,
+): PaymentMethod {
+  return value === "cash" || value === "transfer"
+    ? value
+    : "card";
+}
 
 export type Sale = {
   id: string;
@@ -27,6 +34,8 @@ export type Sale = {
   method: PaymentMethod;
   totalCents: number;
   at: string;
+  /** Pedido apartado del que viene la venta, si lo hay. */
+  reservationId?: string | null;
 };
 
 export type ReservationStatus =
@@ -45,9 +54,7 @@ export type Reservation = {
   pickupBy: string;
   createdAt: string;
 
-  // Campos heredados de PayPal.
-  paypalOrderId: string | null;
-  paypalAuthorizationId: string | null;
+  /** Tarjeta de sellos del cliente (cuenta o teléfono). */
   payerId: string | null;
 
   /** Código de cuatro dígitos para recoger. */
@@ -207,7 +214,7 @@ export function cardLabel(c: {
 
   return d
     ? `${d.slice(0, 2)} ${d.slice(2, 6)} ${d.slice(6)}`
-    : "PayPal";
+    : "Cliente";
 }
 
 // ==========================================
@@ -713,8 +720,7 @@ export type CashUp = {
 export function cashUp(
   s: StallState,
 ): CashUp {
-  // Inicializar los cuatro métodos.
-  // PayPal solo se conserva para el historial.
+  // Inicializar los métodos de pago.
   const byMethod: Record<
     PaymentMethod,
     number
@@ -722,7 +728,6 @@ export function cashUp(
     cash: 0,
     card: 0,
     transfer: 0,
-    paypal: 0,
   };
 
   const perDish = new Map<
@@ -766,12 +771,10 @@ export function cashUp(
   }
 
   // Calcular el total de todos los pagos.
-  // Se incluyen también las ventas históricas.
   const totalCents =
     byMethod.cash +
     byMethod.card +
-    byMethod.transfer +
-    byMethod.paypal;
+    byMethod.transfer;
 
   return {
     salesCount: s.sales.length,
