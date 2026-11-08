@@ -16,7 +16,6 @@ import {
 import { ownerView } from "@/lib/stall";
 
 import {
-  demoMode,
   isOwner,
   ownerPinRequired,
 } from "@/lib/owner-auth";
@@ -149,7 +148,6 @@ async function Panel({
         lang={lang}
         timezone={state.timezone}
         t={t}
-        demo={demoMode()}
         canSignOut={ownerPinRequired()}
         vapidKey={vapidPublicKey()}
       />

@@ -288,7 +288,8 @@ function save(s: StallState): StallState {
 // ALMACENAMIENTO PRINCIPAL
 // ==========================================
 
-export const memoryStore: StallStore = {
+/** Local dev and tests only: `reset` brings the demo stall back to a seeded day. */
+export const memoryStore: StallStore & { reset(slug: string): Promise<StallState> } = {
 
   // ========================================
   // OBTENER NEGOCIO

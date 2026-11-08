@@ -24,7 +24,6 @@ import { authEnabled } from "@/lib/auth/config";
 import { cardForPhone } from "@/lib/accounts";
 
 import {
-  demoMode,
   isOwner,
   unauthorized,
 } from "@/lib/owner-auth";
@@ -376,11 +375,6 @@ const Action = z.discriminatedUnion(
       action: z.literal("close"),
     }),
 
-    // REINICIAR DEMOSTRACIÓN
-    z.object({
-      action: z.literal("reset"),
-    }),
-
     // ======================================
     // GUARDAR MENÚ
     // ======================================
@@ -558,7 +552,6 @@ const MAY_BRING_BACK = new Set([
   "open",
   "soldOut",
   "cancelReservation",
-  "reset",
   "restock",
 ]);
 
@@ -956,24 +949,6 @@ export async function POST(
         ownerView(next),
       );
     }
-
-    // ======================================
-    // REINICIAR DEMOSTRACIÓN
-    // ======================================
-
-    case "reset":
-      if (!demoMode()) {
-        return Response.json(
-          { error: "demo_off" },
-          { status: 403 },
-        );
-      }
-
-      return Response.json(
-        ownerView(
-          await store.reset(slug),
-        ),
-      );
 
     // ======================================
     // ENTREGAR O CANCELAR APARTADO

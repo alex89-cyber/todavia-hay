@@ -35,7 +35,6 @@ export function OwnerPanel({
   lang,
   timezone,
   t,
-  demo,
   canSignOut,
   vapidKey = null,
 }: {
@@ -43,7 +42,6 @@ export function OwnerPanel({
   lang: string;
   timezone: string;
   t: Dictionary;
-  demo: boolean;
   canSignOut: boolean;
   vapidKey?: string | null;
 }) {
@@ -752,24 +750,8 @@ export function OwnerPanel({
       )}
 
       {/* ACCIONES DE SESIÓN */}
-      {(demo || canSignOut) && (
+      {canSignOut && (
         <footer className="mt-8 flex flex-col items-center gap-3 px-4 text-center text-xs text-muted">
-          {demo && (
-            <>
-              <p>{o.demoNote}</p>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() =>
-                  act({ action: "reset" })
-                }
-                className="underline"
-              >
-                {o.reset}
-              </button>
-            </>
-          )}
-
           {canSignOut && (
             <button
               type="button"

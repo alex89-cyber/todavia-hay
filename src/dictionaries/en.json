@@ -104,8 +104,6 @@
     "used": "Ingredients used",
     "leftOver": "{n} left",
     "done": "Done",
-    "reset": "Reset demo",
-    "demoNote": "Demo: data lives on the server and resets when it restarts.",
     "reservations": "Reservations",
     "awaitingPayment": "Waiting for PayPal payment",
     "handTitle": "Hand over reservation",

@@ -142,7 +142,15 @@ export async function isOwner(
 
   // Compatibilidad temporal con
   // el sistema antiguo basado en PIN.
+  // Sin cuentas ni PIN: abierto solo fuera
+  // de producción (local, pruebas).
   if (!ownerPinRequired()) {
+    if (process.env.NODE_ENV === "production") {
+      console.error(
+        "Owner panel closed: set NEXT_PUBLIC_SUPABASE_ANON_KEY (accounts) or OWNER_PIN.",
+      );
+      return false;
+    }
     return true;
   }
 
@@ -219,14 +227,3 @@ export function recordFailure(
     Date.now(),
   ]);
 }
-
-// ==========================================
-// MODO DEMOSTRACIÓN
-// ==========================================
-
-export const demoMode = () =>
-  ["1", "true", "yes"].includes(
-    (
-      process.env.DEMO_MODE ?? ""
-    ).toLowerCase(),
-  );

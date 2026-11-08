@@ -282,14 +282,6 @@ export interface StallStore {
   ): Promise<LoyaltyCardStatus>;
 
   // ========================================
-  // DEMO
-  // ========================================
-
-  reset(
-    slug: string,
-  ): Promise<StallState>;
-
-  // ========================================
   // RESERVATIONS
   // ========================================
 
