@@ -12,6 +12,10 @@ import { getProfile, saveProfile } from "@/lib/accounts";
 // Google and in-browser flows come back with ?code=.
 export async function GET(request: Request) {
   const url = new URL(request.url);
+  const publicOrigin =
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  process.env.RENDER_EXTERNAL_URL ||
+  url.origin;
   const p = url.searchParams;
   const next = safeNext(p.get("next"), "/es/cuenta");
   const sb = await supabaseServer();
