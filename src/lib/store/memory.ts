@@ -809,6 +809,21 @@ export const memoryStore: StallStore & { reset(slug: string): Promise<StallState
     return true;
   },
 
+  async noShow(slug, id) {
+    const s = must(slug);
+    const r = reservation(s, id);
+
+    if (!r || r.status !== "authorized") {
+      return false;
+    }
+
+    r.status = "expired";
+    r.noShow = true;
+    save(s);
+
+    return true;
+  },
+
   // ========================================
   // CONSULTAR SELLOS
   // ========================================

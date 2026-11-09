@@ -286,6 +286,8 @@ const settings = z.object({
       slotMinutes: z.number().int().min(5).max(120),
       maxPerSlot: z.number().int().min(1).max(500).nullable(),
       toleranceMinutes: z.number().int().min(0).max(240),
+      dineIn: z.boolean().default(false),
+      dineInToleranceMinutes: z.number().int().min(0).max(120).default(15),
     })
     .optional(),
 });

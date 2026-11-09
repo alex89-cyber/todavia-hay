@@ -102,6 +102,9 @@ type ReservationRow = {
   confirm_asked_at?: string | null;
   prep_alerted_at?: string | null;
   customer_id?: string | null;
+  dine_in?: boolean;
+  party_size?: number | null;
+  table_tab_id?: string | null;
 
   reservation_items: {
     dish_id: string;
@@ -117,6 +120,7 @@ const RESERVATION_COLS_BASE =
   "id, customer_name, total_cents, status, pickup_by, created_at, payer_id, reservation_items(dish_id, qty)";
 
 const RESERVATION_COLS = [
+  `${RESERVATION_COLS_BASE}, pickup_code, order_number, pickup_mode, pickup_at, confirmed_at, ready_at, no_show, confirm_asked_at, prep_alerted_at, customer_id, dine_in, party_size, table_tab_id`,
   `${RESERVATION_COLS_BASE}, pickup_code, order_number, pickup_mode, pickup_at, confirmed_at, ready_at, no_show, confirm_asked_at, prep_alerted_at, customer_id`,
   `${RESERVATION_COLS_BASE}, pickup_code, order_number, pickup_mode, pickup_at, confirmed_at, ready_at, no_show, confirm_asked_at, prep_alerted_at`,
   `${RESERVATION_COLS_BASE}, pickup_code, order_number`,
@@ -135,7 +139,7 @@ async function withPickupCode<
 
   for (const cols of RESERVATION_COLS.slice(1)) {
     const missing =
-      /pickup_code|order_number|pickup_mode|pickup_at|confirmed_at|ready_at|no_show|confirm_asked_at|prep_alerted_at|customer_id/;
+      /pickup_code|order_number|pickup_mode|pickup_at|confirmed_at|ready_at|no_show|confirm_asked_at|prep_alerted_at|customer_id|dine_in|party_size|table_tab_id/;
 
     if (!missing.test(result.error?.message ?? "")) {
       break;
@@ -178,6 +182,9 @@ const toReservation = (
   confirmAskedAt: r.confirm_asked_at ?? null,
   prepAlertedAt: r.prep_alerted_at ?? null,
   customerId: r.customer_id ?? null,
+  dineIn: r.dine_in ?? false,
+  partySize: r.party_size ?? null,
+  tableTabId: r.table_tab_id ?? null,
 
   lines: r.reservation_items.map((line) => ({
     dishId: line.dish_id,
@@ -1028,6 +1035,19 @@ export const supabaseStore: StallStore = {
     );
   },
 
+  async noShow(slug, id) {
+    await must(slug);
+
+    return Boolean(
+      check(
+        await db().rpc("no_show_reservation", {
+          p_reservation: id,
+        }),
+        "no show",
+      ),
+    );
+  },
+
   // ========================================
   // CONSULTAR SELLOS
   // ========================================
@@ -1245,6 +1265,14 @@ export const supabaseStore: StallStore = {
 
     if (patch.customerId !== undefined) {
       cols.customer_id = patch.customerId;
+    }
+
+    if (patch.dineIn !== undefined) {
+      cols.dine_in = patch.dineIn;
+    }
+
+    if (patch.partySize !== undefined) {
+      cols.party_size = patch.partySize;
     }
 
     if (!Object.keys(cols).length) {

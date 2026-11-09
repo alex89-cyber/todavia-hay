@@ -127,6 +127,11 @@ describe("resolvePickup", () => {
     expect(r.ok && r.pickup.pickupBy.toISOString()).toBe("2026-11-04T20:52:00.000Z");
   });
 
+  it("dine in uses its own tolerance (15 min by default)", () => {
+    const r = resolvePickup(stall(), { mode: "asap" }, NOW, true);
+    expect(r.ok && r.pickup.pickupBy.toISOString()).toBe("2026-11-04T20:47:00.000Z");
+  });
+
   it("accepts a free slot and rounds an off-grid time up", () => {
     const a = resolvePickup(stall(), { mode: "scheduled", time: "16:00" }, NOW);
     expect(a.ok && hhmm(a.pickup.pickupAt, TZ)).toBe("16:00");

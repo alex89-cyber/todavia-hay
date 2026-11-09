@@ -52,6 +52,10 @@ const TEXT = {
     seats: (n: number) => `Para ${n}`,
     open: "Abrir mesa",
     howMany: "¿Cuántas personas?",
+    hasBooking: "¿Tiene reservación?",
+    bookingPh: "Código de 4 dígitos o apellido",
+    bookingHint: "La cuenta se abre con los platillos que apartó.",
+    seated: "Mesa abierta con su apartado.",
     cancel: "Cancelar",
     back: "← Mesas",
     order: "Agregar al pedido",
@@ -113,6 +117,10 @@ const TEXT = {
     seats: (n: number) => `Seats ${n}`,
     open: "Open table",
     howMany: "How many guests?",
+    hasBooking: "Do they have a reservation?",
+    bookingPh: "4-digit code or last name",
+    bookingHint: "The bill opens with the dishes they reserved.",
+    seated: "Table opened with their reservation.",
     cancel: "Cancel",
     back: "← Tables",
     order: "Add to order",
@@ -181,6 +189,8 @@ export default function StaffTablesManager({ slug, lang, readOnly = false }: Pro
   // Pantallas
   const [opening, setOpening] = useState<Place | null>(null);
   const [party, setParty] = useState(2);
+  const [booked, setBooked] = useState(false);
+  const [booking, setBooking] = useState("");
   const [tabId, setTabId] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
   const [picked, setPicked] = useState<string[]>([]);
@@ -346,7 +356,16 @@ export default function StaffTablesManager({ slug, lang, readOnly = false }: Pro
 
   async function openTable() {
     if (!opening) return;
-    const next = await act({ action: "open", tableId: opening.tableId, partySize: party }, "");
+    const proof = booked ? booking.trim() : "";
+    const next = await act(
+      {
+        action: "open",
+        tableId: opening.tableId,
+        partySize: party,
+        ...(proof ? { reservation: proof } : {}),
+      },
+      proof ? t.seated : "",
+    );
     if (next) {
       const created = next.tabs.find((x) => x.tableId === opening.tableId);
       setOpening(null);
@@ -812,6 +831,8 @@ export default function StaffTablesManager({ slug, lang, readOnly = false }: Pro
                 setTabId(place.tab.id);
               } else {
                 setParty(Math.min(place.capacity, 50) || 2);
+                setBooked(false);
+                setBooking("");
                 setOpening(place);
               }
             };
@@ -913,6 +934,35 @@ export default function StaffTablesManager({ slug, lang, readOnly = false }: Pro
                 +
               </button>
             </div>
+            <label className="mt-5 flex items-center gap-3 text-sm font-bold text-gray-700">
+              <input
+                type="checkbox"
+                checked={booked}
+                onChange={(e) => setBooked(e.target.checked)}
+                className="size-5 accent-[#a3341f]"
+              />
+              {t.hasBooking}
+            </label>
+            {booked && (
+              <div className="mt-2">
+                <input
+                  type="text"
+                  value={booking}
+                  maxLength={60}
+                  autoFocus
+                  onChange={(e) => setBooking(e.target.value)}
+                  placeholder={t.bookingPh}
+                  aria-label={t.bookingPh}
+                  className="w-full rounded-lg border border-[#eaded3] px-3 py-2 text-base"
+                />
+                <p className="mt-1 text-xs text-gray-500">{t.bookingHint}</p>
+              </div>
+            )}
+            {error && (
+              <p role="alert" className="mt-3 rounded-lg bg-red-50 p-2 text-xs font-semibold text-red-700">
+                {error}
+              </p>
+            )}
             <div className="mt-6 grid grid-cols-2 gap-2">
               <button
                 type="button"
@@ -924,7 +974,7 @@ export default function StaffTablesManager({ slug, lang, readOnly = false }: Pro
               <button
                 type="button"
                 onClick={() => void openTable()}
-                disabled={busy}
+                disabled={busy || (booked && booking.trim().length < 2)}
                 className="rounded-xl bg-[#a3341f] px-4 py-3 text-sm font-black text-white disabled:opacity-40"
               >
                 {t.open}

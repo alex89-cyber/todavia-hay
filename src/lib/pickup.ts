@@ -23,6 +23,8 @@ export const DEFAULT_PICKUP: PickupSettings = {
   slotMinutes: 15,
   maxPerSlot: null,
   toleranceMinutes: 20,
+  dineIn: false,
+  dineInToleranceMinutes: 15,
 };
 
 export const CONFIRM_AFTER_MINUTES = 60;
@@ -94,6 +96,15 @@ export function pickupSettings(
       DEFAULT_PICKUP.toleranceMinutes,
       0,
       240,
+    ),
+
+    dineIn: p.dineIn === true,
+
+    dineInToleranceMinutes: whole(
+      p.dineInToleranceMinutes,
+      DEFAULT_PICKUP.dineInToleranceMinutes,
+      0,
+      120,
     ),
   };
 }
@@ -577,6 +588,7 @@ export function resolvePickup(
   s: StallState,
   choice: PickupChoice,
   now = new Date(),
+  dineIn = false,
 ):
   | {
       ok: true;
@@ -605,7 +617,10 @@ export function resolvePickup(
 
       pickupBy: new Date(
         pickupAt.getTime() +
-          p.toleranceMinutes * MIN,
+          (dineIn
+            ? p.dineInToleranceMinutes
+            : p.toleranceMinutes) *
+            MIN,
       ),
     },
   });
