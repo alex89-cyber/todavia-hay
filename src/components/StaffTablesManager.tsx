@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { OpenTab, TabsSnapshot } from "@/app/api/businesses/[slug]/table-tabs/route";
+import { beep } from "@/lib/beep";
 import { groupBySection, groupName } from "@/lib/menu-sections";
 
 // ==========================================
@@ -55,6 +56,15 @@ const TEXT = {
     back: "← Mesas",
     order: "Agregar al pedido",
     send: (n: number) => `Enviar ${n} ${n === 1 ? "platillo" : "platillos"}`,
+    sendKitchen: (n: number) => `Enviar ${n} a cocina`,
+    sentKitchen: "Comanda enviada a cocina.",
+    readyToServe: "Lista para servir",
+    markServed: "Servida",
+    servedOk: "Comanda servida.",
+    inKitchen: "En cocina",
+    readyItem: "Lista",
+    removeAskWaste:
+      "¿Quitar este platillo? Ya se preparó: cuenta como merma y NO regresa al inventario.",
     noteFor: "Nota (opcional)",
     notePh: "Ej. sin cebolla",
     left: (n: number) => `quedan ${n}`,
@@ -107,6 +117,14 @@ const TEXT = {
     back: "← Tables",
     order: "Add to order",
     send: (n: number) => `Send ${n} ${n === 1 ? "dish" : "dishes"}`,
+    sendKitchen: (n: number) => `Send ${n} to kitchen`,
+    sentKitchen: "Ticket sent to the kitchen.",
+    readyToServe: "Ready to serve",
+    markServed: "Served",
+    servedOk: "Ticket served.",
+    inKitchen: "In kitchen",
+    readyItem: "Ready",
+    removeAskWaste: "Remove this dish? It was already cooked: it counts as waste and stock does NOT go back.",
     noteFor: "Note (optional)",
     notePh: "e.g. no onion",
     left: (n: number) => `${n} left`,
@@ -201,9 +219,11 @@ export default function StaffTablesManager({ slug, lang, readOnly = false }: Pro
   }, [base, t.error]);
 
   // Carga inicial y cada 20 s (otros meseros también mueven las mesas).
+  // Con cocina, cada 10 s para enterarse rápido de lo que ya está listo.
+  const kitchen = data?.kitchen ?? false;
   useEffect(() => {
     const first = setTimeout(() => void load(), 0);
-    const timer = setInterval(() => void load(), 20_000);
+    const timer = setInterval(() => void load(), kitchen ? 10_000 : 20_000);
     const onFocus = () => void load();
     window.addEventListener("focus", onFocus);
     return () => {
@@ -211,7 +231,19 @@ export default function StaffTablesManager({ slug, lang, readOnly = false }: Pro
       clearInterval(timer);
       window.removeEventListener("focus", onFocus);
     };
-  }, [load]);
+  }, [load, kitchen]);
+
+  // Suena cuando aparece una comanda lista que antes no estaba.
+  const readySeen = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (!data) return;
+    const ready = new Set(
+      data.tabs.flatMap((x) => x.tickets.filter((k) => k.status === "ready").map((k) => k.id)),
+    );
+    const before = readySeen.current;
+    readySeen.current = ready;
+    if (before && !readOnly && [...ready].some((id) => !before.has(id))) beep();
+  }, [data, readOnly]);
 
   async function send(
     endpoint: string,
@@ -328,13 +360,19 @@ export default function StaffTablesManager({ slug, lang, readOnly = false }: Pro
     const lines = Object.entries(cart)
       .filter(([, qty]) => qty > 0)
       .map(([dishId, qty]) => ({ dishId, qty, note: notes[dishId]?.trim() || undefined }));
-    const next = await act({ action: "add", tabId: tab.id, lines }, t.sent);
+    const next = await act({ action: "add", tabId: tab.id, lines }, kitchen ? t.sentKitchen : t.sent);
     if (next) resetOrder();
   }
 
   async function removeItem(itemId: string) {
-    if (!window.confirm(t.removeAsk)) return;
+    const status = tab?.items.find((i) => i.id === itemId)?.ticketStatus;
+    const cooked = status === "ready" || status === "served";
+    if (!window.confirm(cooked ? t.removeAskWaste : t.removeAsk)) return;
     await act({ action: "cancelItem", itemId }, "");
+  }
+
+  async function served(ticketId: string) {
+    await act({ action: "served", ticketId }, t.servedOk);
   }
 
   async function pay(method: Method) {
@@ -435,6 +473,38 @@ export default function StaffTablesManager({ slug, lang, readOnly = false }: Pro
           </p>
         </header>
 
+        {tab.tickets
+          .filter((k) => k.status === "ready")
+          .map((k) => (
+            <div
+              key={k.id}
+              role="status"
+              className="flex items-center gap-3 rounded-2xl border-2 border-[#244D38] bg-[#EDF4E9] p-4"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-black uppercase tracking-widest text-[#244D38]">
+                  🔔 {t.readyToServe}
+                </p>
+                <p className="mt-1 text-sm text-[#244D38]">
+                  {tab.items
+                    .filter((i) => i.ticketId === k.id)
+                    .map((i) => `${i.qty}× ${dishName(i.dishId)}`)
+                    .join(" · ")}
+                </p>
+              </div>
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={() => void served(k.id)}
+                  disabled={busy}
+                  className="rounded-xl bg-[#244D38] px-4 py-3 text-sm font-black text-white disabled:opacity-40"
+                >
+                  {t.markServed}
+                </button>
+              )}
+            </div>
+          ))}
+
         {messages}
         {data && !data.isOpen && (
           <p className="rounded-xl bg-amber-50 p-4 text-sm font-semibold text-amber-900">{t.closedDay}</p>
@@ -512,7 +582,7 @@ export default function StaffTablesManager({ slug, lang, readOnly = false }: Pro
               disabled={busy || cartCount === 0}
               className="sticky bottom-3 mt-3 w-full rounded-xl bg-[#a3341f] px-5 py-4 text-base font-black text-white shadow-lg disabled:opacity-40"
             >
-              {t.send(cartCount)}
+              {kitchen ? t.sendKitchen(cartCount) : t.send(cartCount)}
             </button>
           </section>
 
@@ -529,6 +599,16 @@ export default function StaffTablesManager({ slug, lang, readOnly = false }: Pro
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold">{dishName(item.dishId)}</p>
                       {item.note && <p className="text-xs text-gray-500">“{item.note}”</p>}
+                      {item.ticketStatus === "pending" && (
+                        <span className="mt-0.5 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900">
+                          {t.inKitchen}
+                        </span>
+                      )}
+                      {item.ticketStatus === "ready" && (
+                        <span className="mt-0.5 inline-block rounded-full bg-[#EDF4E9] px-2 py-0.5 text-[11px] font-bold text-[#244D38]">
+                          {t.readyItem}
+                        </span>
+                      )}
                     </div>
                     <span className="tabular-nums">{fmt(item.qty * item.priceCents)}</span>
                     <button
@@ -773,6 +853,11 @@ export default function StaffTablesManager({ slug, lang, readOnly = false }: Pro
                       <span className="mt-2 block text-xl font-black tabular-nums text-[#a3341f]">
                         {fmt(place.tab.totalCents)}
                       </span>
+                      {place.tab.tickets.some((k) => k.status === "ready") && (
+                        <span className="mt-2 block rounded-lg bg-[#244D38] px-2 py-1 text-center text-xs font-black text-white">
+                          🔔 {t.readyToServe}
+                        </span>
+                      )}
                     </>
                   ) : (
                     <span className="mt-1 block text-xs text-gray-600">{t.seats(place.capacity)}</span>

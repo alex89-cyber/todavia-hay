@@ -39,6 +39,7 @@ export function OwnerPanel({
   canSignOut,
   vapidKey = null,
   tablesEnabled = false,
+  kitchenEnabled = false,
 }: {
   initial: OwnerView;
   lang: string;
@@ -48,6 +49,8 @@ export function OwnerPanel({
   vapidKey?: string | null;
   /** Plan Medium o Plus: botón de Mesas y resumen. */
   tablesEnabled?: boolean;
+  /** Plan Plus: ver la pantalla de cocina (solo lectura). */
+  kitchenEnabled?: boolean;
 }) {
   const o = t.owner;
   const es = lang === "es";
@@ -363,6 +366,15 @@ export function OwnerPanel({
               className="inline-flex items-center gap-2 rounded-xl border border-[#eaded3] bg-white px-4 py-3 text-sm font-semibold text-[#4b3024] shadow-sm transition hover:border-brand hover:text-brand"
             >
               {lang === "es" ? "Mesas" : "Tables"}
+            </Link>
+            )}
+
+            {kitchenEnabled && (
+            <Link
+              href={`/${lang}/empleado/cocina/${view.slug}`}
+              className="inline-flex items-center gap-2 rounded-xl border border-[#eaded3] bg-white px-4 py-3 text-sm font-semibold text-[#4b3024] shadow-sm transition hover:border-brand hover:text-brand"
+            >
+              {lang === "es" ? "Cocina" : "Kitchen"}
             </Link>
             )}
 

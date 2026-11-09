@@ -139,6 +139,15 @@ async function EmployeeContent({
     redirect(`/${lang}/mis-negocios`);
   }
 
+  // Cocina con un solo negocio Plus: su panel es la pantalla de cocina.
+  if (
+    staffMemberships.length === 1 &&
+    staffMemberships[0].role === "kitchen" &&
+    staffMemberships[0].business.plan === "plus"
+  ) {
+    redirect(`/${lang}/empleado/cocina/${staffMemberships[0].business.slug}`);
+  }
+
   // ========================================
   // SIN NEGOCIOS ASIGNADOS
   // ========================================
@@ -366,6 +375,50 @@ async function EmployeeContent({
         </div>
         </section>
 
+        {/* COCINA (PLAN PLUS): cocina marca listas, encargado solo ve */}
+        {staffMemberships.some(
+          (item) =>
+            (item.role === "kitchen" || item.role === "manager") &&
+            item.business.plan === "plus",
+        ) && (
+          <section className="mt-8">
+            <h2 className="text-xl font-black">
+              {lang === "es" ? "Cocina" : "Kitchen"}
+            </h2>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              {staffMemberships
+                .filter(
+                  (item) =>
+                    (item.role === "kitchen" || item.role === "manager") &&
+                    item.business.plan === "plus",
+                )
+                .map((item) => (
+                  <Link
+                    key={item.business.id}
+                    href={`/${lang}/empleado/cocina/${item.business.slug}`}
+                    className="block rounded-2xl border border-[#eaded3] bg-white p-5 transition hover:border-[#a3341f] hover:shadow-md"
+                  >
+                    <p className="text-3xl">👩‍🍳</p>
+                    <h3 className="mt-3 font-black">
+                      {lang === "es" ? "Cocina" : "Kitchen"} · {item.business.name}
+                    </h3>
+                    <p className="mt-2 text-sm text-gray-600">
+                      {item.role === "kitchen"
+                        ? lang === "es"
+                          ? "Comandas de mesas y apartados por preparar."
+                          : "Table and pickup tickets to prepare."
+                        : lang === "es"
+                          ? "Ver cómo va la cocina (solo lectura)."
+                          : "See how the kitchen is doing (view only)."}
+                    </p>
+                    <p className="mt-3 text-sm font-bold text-[#a3341f]">
+                      {lang === "es" ? "Abrir cocina →" : "Open kitchen →"}
+                    </p>
+                  </Link>
+                ))}
+            </div>
+          </section>
+        )}
 
     </main>
   );

@@ -14,7 +14,7 @@ import {
 } from "@/dictionaries";
 
 import { ownerView } from "@/lib/stall";
-import { businessHasTables } from "@/lib/table-access";
+import { businessHasKitchen, businessHasTables } from "@/lib/table-access";
 
 import {
   isOwner,
@@ -152,6 +152,7 @@ async function Panel({
         canSignOut={ownerPinRequired()}
         vapidKey={vapidPublicKey()}
         tablesEnabled={await businessHasTables(slug)}
+        kitchenEnabled={await businessHasKitchen(slug)}
       />
 
     </div>
