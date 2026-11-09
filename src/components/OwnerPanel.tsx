@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { Dictionary } from "@/dictionaries";
 import { clock, fill, money, qty } from "@/lib/format";
+import { groupBySection, groupName } from "@/lib/menu-sections";
 import { menuAvailability } from "@/lib/inventory";
 import { kitchenStage, needsConfirmation, pickupSettings, prepStartsAt, type KitchenStage } from "@/lib/pickup";
 import { subscribePush } from "@/lib/client-push";
@@ -52,6 +53,12 @@ export function OwnerPanel({
   const es = lang === "es";
 
   const [view, setView] = useState(initial);
+
+  const posGroups = useMemo(
+    () => groupBySection(view.dishes, view.sections),
+    [view.dishes, view.sections],
+  );
+
   const [ticket, setTicket] = useState<Ticket>({});
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<Toast>(null);
@@ -600,8 +607,15 @@ export function OwnerPanel({
         </p>
       </div>
 
+      {posGroups.map((group) => (
+      <div key={group.id ?? "otros"}>
+      {posGroups.some((g) => g.id !== null) && (
+        <h3 className="px-4 pt-4 text-sm font-black uppercase tracking-widest text-brand sm:px-6 lg:px-8">
+          {groupName(group, lang)}
+        </h3>
+      )}
       <section className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 sm:p-6 lg:grid-cols-3 lg:px-8 2xl:grid-cols-4">
-        {view.dishes.map((d) => {
+        {group.dishes.map((d) => {
           const out = d.portions === 0;
 
           const inTicket =
@@ -707,6 +721,8 @@ export function OwnerPanel({
           );
         })}
       </section>
+      </div>
+      ))}
 
       {/* CLIENTES Y SELLOS */}
       {view.loyalty.rewardDishId && (

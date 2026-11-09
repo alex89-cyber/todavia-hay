@@ -28,9 +28,17 @@ type RecipeRow = {
   qty: string;
 };
 
+type SectionRow = {
+  key: string;
+  name: string;
+  toKitchen: boolean;
+};
+
 type DishRow = {
   rowKey: string;
   id: string | null;
+  /** Clave de la sección; null = "Otros". */
+  section: string | null;
   nameEs: string;
   nameEn: string;
   imageUrl: string | null;
@@ -40,8 +48,27 @@ type DishRow = {
 
 type EditorState = {
   ingredients: IngredientRow[];
+  sections: SectionRow[];
   dishes: DishRow[];
 };
+
+/** Platillos en el orden en que se ven: por sección y luego "Otros". */
+function grouped(
+  sections: SectionRow[],
+  dishes: DishRow[],
+): { section: SectionRow | null; dishes: DishRow[] }[] {
+  const keys = new Set(sections.map((x) => x.key));
+  return [
+    ...sections.map((section) => ({
+      section,
+      dishes: dishes.filter((d) => d.section === section.key),
+    })),
+    {
+      section: null,
+      dishes: dishes.filter((d) => !d.section || !keys.has(d.section)),
+    },
+  ];
+}
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
@@ -72,9 +99,16 @@ function fromView(view: OwnerView): EditorState {
       unit: asUnit(ingredient.unit),
     })),
 
+    sections: (view.sections ?? []).map((section) => ({
+      key: section.id,
+      name: section.name,
+      toKitchen: section.toKitchen,
+    })),
+
     dishes: view.dishes.map((dish) => ({
       rowKey: dish.id,
       id: dish.id,
+      section: dish.sectionId ?? null,
       nameEs: dish.nameEs,
       nameEn:
         dish.nameEn === dish.nameEs
@@ -379,6 +413,32 @@ export function MenuEditor({
       : "Ingredients and quantities per serving.",
     ingredientsCount: es ? "ingredientes" : "ingredients",
     dishesCount: es ? "platillos" : "dishes",
+    sections: es ? "Secciones del menú" : "Menu sections",
+    sectionsHint: es
+      ? "Agrupa tus platillos (Tacos, Bebidas, Postres...). Los que no tengan sección salen al final en “Otros”."
+      : "Group your dishes (Tacos, Drinks, Desserts...). Dishes without a section show last under “Other”.",
+    sectionName: es ? "Nombre de la sección" : "Section name",
+    toKitchen: es ? "Se prepara en cocina" : "Made in the kitchen",
+    toKitchenHint: es
+      ? "Plan Plus: sus platillos llegan a la pantalla de cocina."
+      : "Plus plan: its dishes go to the kitchen screen.",
+    addSection: es ? "+ Agregar sección" : "+ Add section",
+    removeSection: es ? "Quitar sección" : "Remove section",
+    removeSectionConfirm: es
+      ? "¿Quitar la sección “{name}”? Sus platillos pasan a “Otros”; no se borran."
+      : "Remove the “{name}” section? Its dishes move to “Other”; they are not deleted.",
+    section: es ? "Sección" : "Section",
+    other: es ? "Otros" : "Other",
+    noSections: es
+      ? "Todavía no tienes secciones. Todos tus platillos están en “Otros”."
+      : "No sections yet. All your dishes are under “Other”.",
+    addDishIn: es ? "+ Agregar platillo en {name}" : "+ Add dish to {name}",
+    emptySectionName: es
+      ? "Ponle nombre a todas las secciones."
+      : "Give every section a name.",
+    duplicateSection: es
+      ? "Hay dos secciones con el mismo nombre."
+      : "Two sections have the same name.",
   };
 
   const [ingredients, setIngredients] = useState(
@@ -387,6 +447,15 @@ export function MenuEditor({
 
   const [dishes, setDishes] = useState(
     () => fromView(initial).dishes,
+  );
+
+  const [sections, setSections] = useState(
+    () => fromView(initial).sections,
+  );
+
+  const groups = useMemo(
+    () => grouped(sections, dishes),
+    [sections, dishes],
   );
 
   const [saved, setSaved] = useState(
@@ -402,8 +471,8 @@ export function MenuEditor({
 
   const dirty = useMemo(
     () =>
-      JSON.stringify({ ingredients, dishes }) !== saved,
-    [ingredients, dishes, saved],
+      JSON.stringify({ ingredients, sections, dishes }) !== saved,
+    [ingredients, sections, dishes, saved],
   );
 
   const unitOf = new Map(
@@ -439,26 +508,75 @@ export function MenuEditor({
     );
   };
 
-  const move = (index: number, by: number) => {
+  /** Sube o baja un platillo dentro de su sección. */
+  const move = (rowKey: string, by: number) => {
     setDishes((previous) => {
-      const target = index + by;
+      const group = grouped(sections, previous).find((g) =>
+        g.dishes.some((d) => d.rowKey === rowKey),
+      );
+      if (!group) return previous;
+      const at = group.dishes.findIndex((d) => d.rowKey === rowKey);
+      const other = group.dishes[at + by];
+      if (!other) return previous;
 
-      if (
-        target < 0 ||
-        target >= previous.length
-      ) {
-        return previous;
-      }
-
+      const a = previous.findIndex((d) => d.rowKey === rowKey);
+      const b = previous.findIndex((d) => d.rowKey === other.rowKey);
       const next = [...previous];
-      [next[index], next[target]] = [
-        next[target],
-        next[index],
-      ];
-
+      [next[a], next[b]] = [next[b], next[a]];
       return next;
     });
   };
+
+  const moveSection = (index: number, by: number) => {
+    setSections((previous) => {
+      const target = index + by;
+      if (target < 0 || target >= previous.length) return previous;
+      const next = [...previous];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  };
+
+  const setSection = (key: string, patch: Partial<SectionRow>) =>
+    setSections((previous) =>
+      previous.map((section) =>
+        section.key === key ? { ...section, ...patch } : section,
+      ),
+    );
+
+  function removeSection(row: SectionRow) {
+    const used = dishes.some((dish) => dish.section === row.key);
+    if (
+      used &&
+      !window.confirm(
+        fill(ui.removeSectionConfirm, { name: row.name || "?" }),
+      )
+    ) {
+      return;
+    }
+    setSections((previous) => previous.filter((x) => x.key !== row.key));
+    setDishes((previous) =>
+      previous.map((dish) =>
+        dish.section === row.key ? { ...dish, section: null } : dish,
+      ),
+    );
+  }
+
+  function addDish(section: string | null) {
+    setDishes((previous) => [
+      ...previous,
+      {
+        rowKey: newKey(),
+        id: null,
+        section,
+        nameEs: "",
+        nameEn: "",
+        imageUrl: null,
+        price: "",
+        recipe: [{ ingredient: "", qty: "" }],
+      },
+    ]);
+  }
 
   function removeIngredient(row: IngredientRow) {
     const used = dishes.some((dish) =>
@@ -508,6 +626,18 @@ export function MenuEditor({
       return m.errors.empty_name;
     }
 
+    if (sections.some((section) => !section.name.trim())) {
+      return ui.emptySectionName;
+    }
+
+    const sectionNames = sections.map((section) =>
+      section.name.trim().toLowerCase(),
+    );
+
+    if (new Set(sectionNames).size !== sectionNames.length) {
+      return ui.duplicateSection;
+    }
+
     const names = ingredients.map((ingredient) =>
       ingredient.name.trim().toLowerCase(),
     );
@@ -551,8 +681,16 @@ export function MenuEditor({
         unit: ingredient.unit,
       })),
 
-      dishes: dishes.map((dish) => ({
+      sections: sections.map((section) => ({
+        key: section.key,
+        name: section.name.trim(),
+        toKitchen: section.toKitchen,
+      })),
+
+      // En el orden en que se ven: así queda el orden de cada sección.
+      dishes: groups.flatMap((g) => g.dishes).map((dish) => ({
         id: dish.id,
+        section: dish.section,
         nameEs: dish.nameEs.trim(),
         nameEn: dish.nameEn.trim(),
 
@@ -619,6 +757,9 @@ export function MenuEditor({
       setNote({
         ok: false,
         text:
+          (json?.error === "duplicate_section"
+            ? ui.duplicateSection
+            : null) ??
           m.errors[key] ??
           (es
             ? "No se pudo guardar el menú."
@@ -631,6 +772,7 @@ export function MenuEditor({
     const fresh = fromView(json as OwnerView);
 
     setIngredients(fresh.ingredients);
+    setSections(fresh.sections);
     setDishes(fresh.dishes);
     setSaved(JSON.stringify(fresh));
 
@@ -813,7 +955,117 @@ export function MenuEditor({
             </span>
           </div>
 
-          {dishes.map((dish, index) => (
+          {/* SECCIONES */}
+          <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4 shadow-sm sm:p-5">
+            <div>
+              <h3 className="text-base font-bold">{ui.sections}</h3>
+              <p className="mt-1 text-sm text-muted">{ui.sectionsHint}</p>
+            </div>
+
+            {sections.length === 0 && (
+              <p className="rounded-xl bg-background p-3 text-sm text-muted">
+                {ui.noSections}
+              </p>
+            )}
+
+            {sections.map((section, index) => (
+              <div
+                key={section.key}
+                className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-background p-3"
+              >
+                <input
+                  className={`${input} min-w-[10rem] flex-1 font-semibold`}
+                  value={section.name}
+                  maxLength={60}
+                  placeholder={ui.sectionName}
+                  aria-label={ui.sectionName}
+                  onChange={(event) =>
+                    setSection(section.key, { name: event.target.value })
+                  }
+                />
+
+                <label
+                  className="flex items-center gap-2 text-sm"
+                  title={ui.toKitchenHint}
+                >
+                  <input
+                    type="checkbox"
+                    checked={section.toKitchen}
+                    onChange={(event) =>
+                      setSection(section.key, {
+                        toKitchen: event.target.checked,
+                      })
+                    }
+                    className="h-4 w-4 accent-[var(--color-brand,#a63822)]"
+                  />
+                  {ui.toKitchen}
+                </label>
+
+                <div className="ml-auto flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => moveSection(index, -1)}
+                    disabled={index === 0}
+                    aria-label={m.moveUp}
+                    className="rounded-lg border border-line px-2.5 py-1 text-base disabled:opacity-20"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveSection(index, 1)}
+                    disabled={index === sections.length - 1}
+                    aria-label={m.moveDown}
+                    className="rounded-lg border border-line px-2.5 py-1 text-base disabled:opacity-20"
+                  >
+                    ↓
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeSection(section)}
+                    aria-label={ui.removeSection}
+                    className="rounded-lg px-2 py-1 text-lg text-bad hover:bg-surface"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            <p className="text-xs text-muted">{ui.toKitchenHint}</p>
+
+            <button
+              type="button"
+              onClick={() =>
+                setSections((previous) => [
+                  ...previous,
+                  { key: newKey(), name: "", toKitchen: true },
+                ])
+              }
+              className="w-full rounded-xl border border-brand px-4 py-3 text-sm font-semibold text-brand transition hover:bg-background"
+            >
+              {ui.addSection}
+            </button>
+          </div>
+
+          {groups.map((group) =>
+            group.section === null &&
+            group.dishes.length === 0 &&
+            sections.length > 0 ? null : (
+          <div
+            key={group.section?.key ?? "other"}
+            className="flex min-w-0 flex-col gap-4"
+          >
+            {sections.length > 0 && (
+              <h3 className="mt-2 flex items-baseline gap-2 border-b border-line pb-2 text-lg font-black">
+                {group.section?.name.trim() || (group.section ? "…" : ui.other)}
+                <span className="text-xs font-semibold text-muted">
+                  {group.dishes.length} {ui.dishesCount}
+                </span>
+              </h3>
+            )}
+
+          {group.dishes.map((dish, index) => (
             <article
               key={dish.rowKey}
               className="flex min-w-0 flex-col gap-4 rounded-2xl border border-line bg-surface p-4 shadow-sm transition hover:shadow-md sm:p-5"
@@ -824,6 +1076,28 @@ export function MenuEditor({
                   <span className="text-xs font-semibold text-muted">
                     {ui.dishNumber} {index + 1}
                   </span>
+
+                  {sections.length > 0 && (
+                    <label className="flex items-center gap-2 text-xs font-semibold text-muted">
+                      {ui.section}
+                      <select
+                        className={`${input} py-1.5`}
+                        value={dish.section ?? ""}
+                        onChange={(event) =>
+                          setDish(dish.rowKey, {
+                            section: event.target.value || null,
+                          })
+                        }
+                      >
+                        {sections.map((section) => (
+                          <option key={section.key} value={section.key}>
+                            {section.name.trim() || "…"}
+                          </option>
+                        ))}
+                        <option value="">{ui.other}</option>
+                      </select>
+                    </label>
+                  )}
 
                   <input
                     className={`${input} font-semibold`}
@@ -853,7 +1127,7 @@ export function MenuEditor({
                 <div className="flex shrink-0 flex-col overflow-hidden rounded-xl border border-line">
                   <button
                     type="button"
-                    onClick={() => move(index, -1)}
+                    onClick={() => move(dish.rowKey, -1)}
                     disabled={index === 0}
                     aria-label={m.moveUp}
                     className="px-3 py-1.5 text-lg disabled:opacity-20"
@@ -865,9 +1139,9 @@ export function MenuEditor({
 
                   <button
                     type="button"
-                    onClick={() => move(index, 1)}
+                    onClick={() => move(dish.rowKey, 1)}
                     disabled={
-                      index === dishes.length - 1
+                      index === group.dishes.length - 1
                     }
                     aria-label={m.moveDown}
                     className="px-3 py-1.5 text-lg disabled:opacity-20"
@@ -1071,26 +1345,20 @@ export function MenuEditor({
 
           <button
             type="button"
-            onClick={() =>
-              setDishes((previous) => [
-                ...previous,
-                {
-                  rowKey: newKey(),
-                  id: null,
-                  nameEs: "",
-                  nameEn: "",
-                  imageUrl: null,
-                  price: "",
-                  recipe: [
-                    { ingredient: "", qty: "" },
-                  ],
-                },
-              ])
-            }
+            onClick={() => addDish(group.section?.key ?? null)}
             className="w-full rounded-xl border border-dashed border-brand px-4 py-4 text-sm font-semibold text-brand hover:bg-surface"
           >
-            {m.addDish}
+            {sections.length > 0
+              ? fill(ui.addDishIn, {
+                  name:
+                    group.section?.name.trim() ||
+                    (group.section ? "…" : ui.other),
+                })
+              : m.addDish}
           </button>
+          </div>
+          ),
+          )}
         </section>
       </div>
 

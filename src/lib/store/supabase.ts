@@ -11,6 +11,7 @@ import type { Dish, Ingredient } from "../inventory";
 
 import {
   cashUp,
+  type MenuSection,
   paymentMethod,
   type Reservation,
   type ReservationStatus,
@@ -273,12 +274,12 @@ async function load(
     db()
       .from("dishes")
       .select(
-        "id, name_es, name_en, image_url, price_cents, sold_out, sort, recipe_items(ingredient_id, qty)",
+        "id, name_es, name_en, image_url, price_cents, sold_out, sort, section_id, recipe_items(ingredient_id, qty)",
       )
       .eq("business_id", b.id)
       .order("sort");
 
-  const [ingRes, dishRes, dayRes, resRes] =
+  const [ingRes, dishRes, dayRes, resRes, secRes] =
     await Promise.all([
       activeOnly(
         ingredientsQ().eq("archived", false),
@@ -308,7 +309,21 @@ async function load(
           .gte("created_at", recent)
           .order("created_at"),
       ),
+
+      db()
+        .from("menu_sections")
+        .select("id, name, to_kitchen")
+        .eq("business_id", b.id)
+        .order("sort"),
     ]);
+
+  const sections: MenuSection[] = (
+    check(secRes, "menu_sections") ?? []
+  ).map((section) => ({
+    id: section.id as string,
+    name: section.name as string,
+    toKitchen: section.to_kitchen as boolean,
+  }));
 
   const reservations = (
     (check(resRes, "reservations") ??
@@ -418,6 +433,7 @@ async function load(
     imageUrl: dish.image_url ?? null,
     priceCents: dish.price_cents,
     soldOut: dish.sold_out,
+    sectionId: (dish.section_id as string | null) ?? null,
 
     recipe: (
       dish.recipe_items as {
@@ -496,6 +512,7 @@ async function load(
 
     dishes,
     ingredients,
+    sections,
 
     openingCount: Object.fromEntries(
       Object.entries(
@@ -760,7 +777,16 @@ export const supabaseStore: StallStore = {
             dish.imageUrl?.trim() || null,
           price_cents: dish.priceCents,
           recipe: dish.recipe,
+          section: dish.section ?? null,
         })),
+
+        p_sections: menu.sections
+          ? menu.sections.map((section) => ({
+              key: section.key,
+              name: section.name,
+              to_kitchen: section.toKitchen,
+            }))
+          : null,
       },
     );
 

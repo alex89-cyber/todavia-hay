@@ -13,6 +13,8 @@ import {
 
 import { z } from "zod";
 
+import { groupBySection } from "./menu-sections";
+
 import {
   menuAvailability,
 } from "./inventory";
@@ -817,9 +819,7 @@ function instructions(
     ),
   );
 
-  const menu =
-    state.dishes
-      .map((dish) => {
+  const menuLine = (dish: StallState["dishes"][number]) => {
         const remaining =
           state.isOpen
             ? (
@@ -837,8 +837,18 @@ function instructions(
             ? `about ${remaining} left`
             : "SOLD OUT"
         }`;
-      })
-      .join("\n");
+  };
+
+  // Agrupado por sección, en el orden del dueño.
+  const groups = groupBySection(state.dishes, state.sections);
+  const menu = groups.some((g) => g.id !== null)
+    ? groups
+        .map(
+          (g) =>
+            `## ${g.name ?? (lang === "es" ? "Otros" : "Other")}\n${g.dishes.map(menuLine).join("\n")}`,
+        )
+        .join("\n\n")
+    : state.dishes.map(menuLine).join("\n");
 
   return `You are the order assistant of "${state.name}", a food business using Todavía Hay.
 
@@ -874,6 +884,7 @@ CUSTOMER INFORMATION:
 ORDER RULES:
 
 - Only use products and prices from the live menu.
+- When the customer asks what there is, list the menu grouped by its sections (the "##" headings), in that order.
 - Never invent prices or availability.
 - Maximum quantity is 10 per dish.
 - Ask for pickup preference only once.

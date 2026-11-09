@@ -6,6 +6,7 @@ import { z } from "zod";
 import { admin } from "@/lib/accounts";
 import { sameOrigin } from "@/lib/origin";
 import { menuAvailability } from "@/lib/inventory";
+import type { MenuSection } from "@/lib/stall";
 import { store } from "@/lib/store";
 import { canServe, tableAccess } from "@/lib/table-access";
 
@@ -130,7 +131,9 @@ export type TabsSnapshot = {
     priceCents: number;
     portions: number;
     soldOut: boolean;
+    sectionId: string | null;
   }[];
+  sections: MenuSection[];
 };
 
 async function snapshot(slug: string, businessId: string): Promise<TabsSnapshot> {
@@ -226,7 +229,9 @@ async function snapshot(slug: string, businessId: string): Promise<TabsSnapshot>
       priceCents: d.priceCents,
       portions: available.get(d.id) ?? 0,
       soldOut: d.soldOut,
+      sectionId: d.sectionId ?? null,
     })),
+    sections: state?.sections ?? [],
   };
 }
 

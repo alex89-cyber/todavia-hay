@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { OpenTab, TabsSnapshot } from "@/app/api/businesses/[slug]/table-tabs/route";
+import { groupBySection, groupName } from "@/lib/menu-sections";
 
 // ==========================================
 // TODAVÍA HAY
@@ -443,8 +444,15 @@ export default function StaffTablesManager({ slug, lang, readOnly = false }: Pro
           {/* MENÚ */}
           <section className="rounded-2xl border border-[#eaded3] bg-white p-4">
             <h3 className="text-lg font-black text-[#302018]">{t.order}</h3>
-            <ul className="mt-3 divide-y divide-[#f1e7dd]">
-              {(data?.menu ?? []).map((dish) => {
+            {groupBySection(data?.menu ?? [], data?.sections).map((group, groupIndex, all) => (
+            <div key={group.id ?? "otros"}>
+            {all.some((g) => g.id !== null) && (
+              <h4 className={`${groupIndex === 0 ? "mt-3" : "mt-5"} rounded-lg bg-[#f7efe8] px-3 py-1.5 text-xs font-black uppercase tracking-widest text-[#a3341f]`}>
+                {groupName(group, lang)}
+              </h4>
+            )}
+            <ul className="mt-1 divide-y divide-[#f1e7dd]">
+              {group.dishes.map((dish) => {
                 const qty = cart[dish.id] ?? 0;
                 const out = dish.soldOut || dish.portions <= 0;
                 const max = Math.min(99, dish.portions);
@@ -496,6 +504,8 @@ export default function StaffTablesManager({ slug, lang, readOnly = false }: Pro
                 );
               })}
             </ul>
+            </div>
+            ))}
             <button
               type="button"
               onClick={() => void sendOrder()}

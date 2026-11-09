@@ -31,6 +31,9 @@ export type Dish = {
   priceCents: number;
   soldOut: boolean;
   recipe: RecipeItem[];
+
+  /** Sección del menú; null = "Otros". */
+  sectionId?: string | null;
 };
 
 export type Availability = {

@@ -27,6 +27,7 @@ import {
 } from "@/lib/format";
 
 import type { PublicSnapshot } from "@/lib/stall";
+import { groupBySection, groupName } from "@/lib/menu-sections";
 
 import { AgentChat } from "./AgentChat";
 import { InstallAppButton } from "./InstallAppButton";
@@ -1028,6 +1029,15 @@ export function PublicStall({
     ...gone,
   ];
 
+  // Por sección; dentro de cada una, primero lo que sí hay.
+  const menuGroups = groupBySection(
+    dishes,
+    snap.sections,
+  );
+  const showSections = menuGroups.some(
+    (g) => g.id !== null,
+  );
+
   // ========================================
   // PORTADA
   // ========================================
@@ -1273,8 +1283,37 @@ export function PublicStall({
           )}
         </div>
       ) : (
+        <div className="flex flex-col gap-8">
+          {showSections && (
+            <nav
+              aria-label={es ? "Secciones del menú" : "Menu sections"}
+              className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1"
+            >
+              {menuGroups.map((group) => (
+                <a
+                  key={group.id ?? "otros"}
+                  href={`#menu-${group.id ?? "otros"}`}
+                  className="shrink-0 rounded-full border border-line bg-surface px-4 py-2 text-sm font-semibold transition hover:border-brand hover:text-brand"
+                >
+                  {groupName(group, lang)}
+                </a>
+              ))}
+            </nav>
+          )}
+
+          {menuGroups.map((group) => (
+        <div
+          key={group.id ?? "otros"}
+          id={`menu-${group.id ?? "otros"}`}
+          className="scroll-mt-4"
+        >
+          {showSections && (
+            <h3 className="mb-4 text-xl font-black tracking-tight text-[#2e1b14] sm:text-2xl">
+              {groupName(group, lang)}
+            </h3>
+          )}
         <ul className="grid grid-cols-1 gap-5 lg:grid-cols-2 lg:gap-6">
-          {dishes.map((dish) => {
+          {group.dishes.map((dish) => {
             const out =
               dish.portions === 0;
 
@@ -1408,6 +1447,9 @@ export function PublicStall({
             );
           })}
         </ul>
+        </div>
+          ))}
+        </div>
       )}
     </section>
   );
