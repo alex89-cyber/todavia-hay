@@ -78,6 +78,8 @@ export type PaymentRow = {
   metodo: string;
   importe: number;
   origen: SaleOrigin;
+  /** Mesero que abrió la cuenta (solo cobros de mesa). */
+  mesero?: string | null;
 };
 
 // Ventas históricas guardadas en Supabase.

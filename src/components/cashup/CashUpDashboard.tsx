@@ -30,6 +30,11 @@ const TEXT = {
     byHourSub: "Importe vendido en cada hora del día",
     byMethod: "Formas de pago",
     byMethodSub: "Importe cobrado con cada forma de pago",
+    byWaiter: "Ventas por mesero",
+    byWaiterSub: "Lo cobrado en las mesas que abrió cada mesero",
+    noWaiter: "Sin mesero",
+    tabs: "cuentas",
+    tab: "cuenta",
     stock: "Ingredientes usados",
     stockSub: "Porcentaje usado de lo que había al abrir",
     left: "quedan",
@@ -73,6 +78,11 @@ const TEXT = {
     byHourSub: "Amount sold in each hour of the day",
     byMethod: "Payment methods",
     byMethodSub: "Amount collected with each payment method",
+    byWaiter: "Sales by waiter",
+    byWaiterSub: "Collected on the tables each waiter opened",
+    noWaiter: "No waiter",
+    tabs: "tabs",
+    tab: "tab",
     stock: "Ingredients used",
     stockSub: "Share used of what there was at opening",
     left: "left",
@@ -370,12 +380,19 @@ export function CashUpDashboard({
     for (const d of byDish) d.note = `${qtyByDish.get(d.label) ?? 0} ${lang === "es" ? "vendidos" : "sold"}`;
     const byHour = sumBy(p, (r) => r.horaDelDia, (r) => r.importe).sort((a, b) => a.label.localeCompare(b.label));
     const byMethod = sumBy(p, (r) => r.metodo, (r) => r.importe).sort((a, b) => b.value - a.value);
+    const tablePays = p.filter((r) => r.origen === "mesa");
+    const waiterName = (r: (typeof p)[number]) => r.mesero || t.noWaiter;
+    const byWaiter = sumBy(tablePays, waiterName, (r) => r.importe).sort((a, b) => b.value - a.value);
+    for (const d of byWaiter) {
+      const n = new Set(tablePays.filter((r) => waiterName(r) === d.label).map((r) => r.cuenta)).size;
+      d.note = `${n} ${n === 1 ? t.tab : t.tabs}`;
+    }
     const stock = [...tables.inventario]
       .filter((r) => r.usado > 0)
       .sort((a, b) => b.usadoPct - a.usadoPct)
       .map((r) => ({ label: r.ingrediente, value: r.usadoPct, note: `${t.left} ${r.queda} ${r.unidad}` }));
-    return { total, saleCount, dishCount, byDish, byHour, byMethod, stock };
-  }, [tables, lang, t.left]);
+    return { total, saleCount, dishCount, byDish, byHour, byMethod, byWaiter, stock };
+  }, [tables, lang, t]);
 
   const facts = useMemo(() => {
     const lines = [
@@ -384,6 +401,7 @@ export function CashUpDashboard({
       `${t.byDish}: ${data.byDish.map((d) => `${d.label} ${fmt(d.value)} (${d.note})`).join("; ")}`,
       `${t.byHour}: ${data.byHour.map((d) => `${d.label} ${fmt(d.value)}`).join("; ")}`,
       `${t.byMethod}: ${data.byMethod.map((d) => `${d.label} ${fmt(d.value)}`).join("; ")}`,
+      `${t.byWaiter}: ${data.byWaiter.map((d) => `${d.label} ${fmt(d.value)} (${d.note})`).join("; ")}`,
       `${t.stock}: ${data.stock.map((d) => `${d.label} ${d.value}% (${d.note})`).join("; ")}`,
     ];
     return lines.join("\n").slice(0, 6000);
@@ -425,6 +443,11 @@ export function CashUpDashboard({
         <Card title={t.byMethod} sub={t.byMethodSub}>
           <BarList rows={data.byMethod} format={fmt} empty={t.noData} />
         </Card>
+        {data.byWaiter.length > 0 && (
+          <Card title={t.byWaiter} sub={t.byWaiterSub}>
+            <BarList rows={data.byWaiter} format={fmt} empty={t.noData} />
+          </Card>
+        )}
         <Card title={t.stock} sub={t.stockSub}>
           <BarList rows={data.stock} format={(n) => `${Math.round(n)}%`} empty={t.noData} />
         </Card>
