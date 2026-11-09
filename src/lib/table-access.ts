@@ -24,13 +24,14 @@ export const canConfigure = (role: TableRole) => role === "owner" || role === "m
 export const plansWithTables = (plan: string | null | undefined) =>
   plan === "medium" || plan === "plus";
 
-export type TableAccess =
+export type MemberAccess<R extends string> =
   | {
       ok: true;
       businessId: string;
       businessName: string;
+      plan: string;
       userId: string;
-      role: TableRole;
+      role: R;
     }
   | {
       ok: false;
@@ -39,7 +40,47 @@ export type TableAccess =
       status: number;
     };
 
+export type TableAccess = MemberAccess<TableRole>;
+
 export async function tableAccess(slug: string): Promise<TableAccess> {
+  return memberAccess(
+    slug,
+    TABLE_ROLES,
+    plansWithTables,
+    "No tienes permiso para gestionar mesas.",
+    "Las mesas están en los planes Medium y Plus.",
+  );
+}
+
+// ==========================================
+// COCINA: dueño, encargado y cocina, plan Plus
+// ==========================================
+
+export const KITCHEN_ROLES = ["owner", "manager", "kitchen"] as const;
+export type KitchenRole = (typeof KITCHEN_ROLES)[number];
+
+/** Marcar comandas como listas: solo la persona de cocina. */
+export const canCook = (role: KitchenRole) => role === "kitchen";
+
+export const planWithKitchen = (plan: string | null | undefined) => plan === "plus";
+
+export async function kitchenAccess(slug: string): Promise<MemberAccess<KitchenRole>> {
+  return memberAccess(
+    slug,
+    KITCHEN_ROLES,
+    planWithKitchen,
+    "No tienes permiso para ver la cocina.",
+    "La cocina está en el plan Plus.",
+  );
+}
+
+async function memberAccess<R extends string>(
+  slug: string,
+  roles: readonly R[],
+  planOk: (plan: string | null | undefined) => boolean,
+  forbidden: string,
+  planMessage: string,
+): Promise<MemberAccess<R>> {
   const me = await currentAccount();
   if (!me) {
     return { ok: false, reason: "login", message: "Debes iniciar sesión.", status: 401 };
@@ -61,23 +102,23 @@ export async function tableAccess(slug: string): Promise<TableAccess> {
     .select("role")
     .eq("business_id", business.id)
     .eq("user_id", me.id)
-    .in("role", [...TABLE_ROLES])
+    .in("role", [...roles])
     .maybeSingle();
   if (memberError) throw memberError;
   if (!member) {
     return {
       ok: false,
       reason: "forbidden",
-      message: "No tienes permiso para gestionar mesas.",
+      message: forbidden,
       status: 403,
     };
   }
 
-  if (!plansWithTables(business.plan)) {
+  if (!planOk(business.plan)) {
     return {
       ok: false,
       reason: "plan",
-      message: "Las mesas están en los planes Medium y Plus.",
+      message: planMessage,
       status: 403,
     };
   }
@@ -86,8 +127,9 @@ export async function tableAccess(slug: string): Promise<TableAccess> {
     ok: true,
     businessId: business.id as string,
     businessName: business.name as string,
+    plan: business.plan as string,
     userId: me.id,
-    role: member.role as TableRole,
+    role: member.role as R,
   };
 }
 
@@ -103,4 +145,18 @@ export async function businessHasTables(slug: string): Promise<boolean> {
     return false;
   }
   return plansWithTables(data?.plan);
+}
+
+/** ¿El negocio tiene cocina en su plan? */
+export async function businessHasKitchen(slug: string): Promise<boolean> {
+  const { data, error } = await admin()
+    .from("businesses")
+    .select("plan")
+    .eq("slug", slug)
+    .maybeSingle();
+  if (error) {
+    console.error("plan:", error.message);
+    return false;
+  }
+  return planWithKitchen(data?.plan);
 }

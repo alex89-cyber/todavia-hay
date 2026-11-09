@@ -447,10 +447,28 @@ const Action = z.discriminatedUnion(
                 }),
               )
               .max(30),
+
+            section: z
+              .string()
+              .min(1)
+              .max(60)
+              .nullable()
+              .optional(),
           }),
         )
         .min(1)
         .max(60),
+
+      sections: z
+        .array(
+          z.object({
+            key: z.string().min(1).max(60),
+            name: z.string().trim().min(1).max(60),
+            toKitchen: z.boolean(),
+          }),
+        )
+        .max(30)
+        .optional(),
     }),
 
     // ======================================
@@ -848,6 +866,41 @@ export async function POST(
         );
       }
 
+      // Secciones: sin repetir y que existan.
+      if (a.sections) {
+        const sectionKeys = new Set(
+          a.sections.map((x) => x.key),
+        );
+        const sectionNames = new Set(
+          a.sections.map((x) =>
+            x.name.toLowerCase(),
+          ),
+        );
+        if (
+          sectionKeys.size !==
+            a.sections.length ||
+          sectionNames.size !==
+            a.sections.length
+        ) {
+          return Response.json(
+            { error: "duplicate_section" },
+            { status: 400 },
+          );
+        }
+        if (
+          a.dishes.some(
+            (d) =>
+              d.section &&
+              !sectionKeys.has(d.section),
+          )
+        ) {
+          return Response.json(
+            { error: "bad_section" },
+            { status: 400 },
+          );
+        }
+      }
+
       // Platillos que permanecerán
       const kept = new Set(
         a.dishes.flatMap(
@@ -886,6 +939,8 @@ export async function POST(
           {
             ingredients:
               a.ingredients,
+
+            sections: a.sections,
 
             dishes:
               a.dishes.map(

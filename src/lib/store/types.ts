@@ -122,6 +122,16 @@ export type MenuInput = {
       ingredient: string;
       qty: number;
     }[];
+
+    /** Clave de la sección (id o "new:..."); null = "Otros". */
+    section?: string | null;
+  }[];
+
+  /** En orden. Sin esto no se tocan las secciones. */
+  sections?: {
+    key: string;
+    name: string;
+    toKitchen: boolean;
   }[];
 };
 

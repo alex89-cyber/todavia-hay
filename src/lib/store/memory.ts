@@ -518,7 +518,23 @@ export const memoryStore: StallStore & { reset(slug: string): Promise<StallState
       ])
     );
 
+    const sectionIds = new Map<string, string>();
+    if (menu.sections) {
+      const oldSections = new Set((s.sections ?? []).map((x) => x.id));
+      s.sections = menu.sections.map((x) => {
+        const id = oldSections.has(x.key) ? x.key : crypto.randomUUID();
+        sectionIds.set(x.key, id);
+        return { id, name: x.name, toKitchen: x.toKitchen };
+      });
+    }
+
     s.dishes = menu.dishes.map((d) => ({
+      sectionId: menu.sections
+        ? d.section
+          ? (sectionIds.get(d.section) ?? null)
+          : null
+        : (d.id ? (old.get(d.id)?.sectionId ?? null) : null),
+
       id:
         d.id && old.has(d.id)
           ? d.id

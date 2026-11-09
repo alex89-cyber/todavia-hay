@@ -6,6 +6,7 @@ import { z } from "zod";
 import { admin } from "@/lib/accounts";
 import { sameOrigin } from "@/lib/origin";
 import { menuAvailability } from "@/lib/inventory";
+import type { MenuSection } from "@/lib/stall";
 import { store } from "@/lib/store";
 import { canServe, tableAccess } from "@/lib/table-access";
 
@@ -58,6 +59,8 @@ const Body = z.discriminatedUnion("action", [
     amountCents: z.number().int().min(1).max(100_000_000).optional(),
   }),
   z.object({ action: z.literal("cancelTab"), tabId: z.string().uuid() }),
+  /** Plan Plus: el mesero ya llevó a la mesa una comanda lista. */
+  z.object({ action: z.literal("served"), ticketId: z.string().uuid() }),
 ]);
 
 // Errores de las funciones SQL que el mesero puede entender.
@@ -79,6 +82,8 @@ const KNOWN: Record<string, { message: string; status: number }> = {
   has_payments: { message: "La cuenta ya tiene pagos; no se puede cancelar.", status: 409 },
   invalid_amount: { message: "El monto es mayor a lo que falta por pagar.", status: 409 },
   empty_tab: { message: "La cuenta no tiene platillos. Cancélala en lugar de cobrar.", status: 409 },
+  ticket_not_found: { message: "La comanda ya no existe.", status: 404 },
+  ticket_not_ready: { message: "Esa comanda todavía no está lista.", status: 409 },
 };
 
 function fail(message: string, status: number) {
@@ -97,7 +102,12 @@ export type TabItem = {
   priceCents: number;
   note: string | null;
   createdAt: string;
+  ticketId: string | null;
+  /** Plan Plus: estado de su comanda; null = no pasa por cocina. */
+  ticketStatus: "pending" | "ready" | "served" | "cancelled" | null;
 };
+
+export type TabTicket = { id: string; status: "pending" | "ready"; readyAt: string | null };
 
 export type OpenTab = {
   id: string;
@@ -110,10 +120,14 @@ export type OpenTab = {
   /** Pagos ya hechos (cuenta dividida). */
   payments: { id: string; method: "cash" | "card" | "transfer"; amountCents: number; at: string }[];
   paidCents: number;
+  /** Comandas en cocina o listas para servir. */
+  tickets: TabTicket[];
 };
 
 export type TabsSnapshot = {
   isOpen: boolean;
+  /** Plan Plus: "Enviar a cocina". */
+  kitchen: boolean;
   currency: string;
   tables: {
     id: string;
@@ -130,10 +144,12 @@ export type TabsSnapshot = {
     priceCents: number;
     portions: number;
     soldOut: boolean;
+    sectionId: string | null;
   }[];
+  sections: MenuSection[];
 };
 
-async function snapshot(slug: string, businessId: string): Promise<TabsSnapshot> {
+async function snapshot(slug: string, businessId: string, kitchen: boolean): Promise<TabsSnapshot> {
   const db = admin();
 
   const [tablesRes, tabsRes, state] = await Promise.all([
@@ -145,7 +161,7 @@ async function snapshot(slug: string, businessId: string): Promise<TabsSnapshot>
     db
       .from("table_tabs")
       .select(
-        "id, table_id, table_label, party_size, opened_at, table_tab_items(id, dish_id, qty, price_cents, note, created_at, cancelled_at)",
+        "id, table_id, table_label, party_size, opened_at, table_tab_items(id, dish_id, qty, price_cents, note, created_at, cancelled_at, ticket_id)",
       )
       .eq("business_id", businessId)
       .eq("status", "open")
@@ -167,6 +183,18 @@ async function snapshot(slug: string, businessId: string): Promise<TabsSnapshot>
     : { data: [], error: null };
   if (paysRes.error) throw paysRes.error;
 
+  const ticketsRes = openIds.length
+    ? await db
+        .from("kitchen_tickets")
+        .select("id, table_tab_id, status, ready_at, created_at")
+        .in("table_tab_id", openIds)
+        .order("created_at", { ascending: true })
+    : { data: [], error: null };
+  if (ticketsRes.error) throw ticketsRes.error;
+  const ticketStatus = new Map(
+    (ticketsRes.data ?? []).map((k) => [k.id as string, k.status as TabItem["ticketStatus"]]),
+  );
+
   const tabs: OpenTab[] = (tabsRes.data ?? []).map((t) => {
     const items = (
       (t.table_tab_items ?? []) as {
@@ -177,6 +205,7 @@ async function snapshot(slug: string, businessId: string): Promise<TabsSnapshot>
         note: string | null;
         created_at: string;
         cancelled_at: string | null;
+        ticket_id: string | null;
       }[]
     )
       .filter((i) => !i.cancelled_at)
@@ -188,6 +217,15 @@ async function snapshot(slug: string, businessId: string): Promise<TabsSnapshot>
         priceCents: i.price_cents,
         note: i.note,
         createdAt: i.created_at,
+        ticketId: i.ticket_id,
+        ticketStatus: i.ticket_id ? (ticketStatus.get(i.ticket_id) ?? null) : null,
+      }));
+    const tickets: TabTicket[] = (ticketsRes.data ?? [])
+      .filter((k) => k.table_tab_id === t.id && (k.status === "pending" || k.status === "ready"))
+      .map((k) => ({
+        id: k.id as string,
+        status: k.status as TabTicket["status"],
+        readyAt: (k.ready_at as string | null) ?? null,
       }));
     const payments = (paysRes.data ?? [])
       .filter((p) => p.table_tab_id === t.id)
@@ -207,6 +245,7 @@ async function snapshot(slug: string, businessId: string): Promise<TabsSnapshot>
       totalCents: items.reduce((sum, i) => sum + i.qty * i.priceCents, 0),
       payments,
       paidCents: payments.reduce((sum, p) => sum + p.amountCents, 0),
+      tickets,
     };
   });
 
@@ -216,6 +255,7 @@ async function snapshot(slug: string, businessId: string): Promise<TabsSnapshot>
 
   return {
     isOpen: state?.isOpen ?? false,
+    kitchen,
     currency: state?.currency ?? "MXN",
     tables: tablesRes.data ?? [],
     tabs,
@@ -226,7 +266,9 @@ async function snapshot(slug: string, businessId: string): Promise<TabsSnapshot>
       priceCents: d.priceCents,
       portions: available.get(d.id) ?? 0,
       soldOut: d.soldOut,
+      sectionId: d.sectionId ?? null,
     })),
+    sections: state?.sections ?? [],
   };
 }
 
@@ -236,7 +278,7 @@ export async function GET(_request: Request, context: Context) {
     const access = await tableAccess(slug);
     if (!access.ok) return fail(access.message, access.status);
 
-    return NextResponse.json(await snapshot(slug, access.businessId), {
+    return NextResponse.json(await snapshot(slug, access.businessId, access.plan === "plus"), {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {
@@ -331,6 +373,15 @@ export async function POST(request: Request, context: Context) {
           p_user: user,
         });
         break;
+      case "served":
+        // p_business asegura que la comanda sea de este negocio.
+        result = await db.rpc("mark_kitchen_ticket", {
+          p_ticket: input.ticketId,
+          p_business: access.businessId,
+          p_status: "served",
+          p_user: user,
+        });
+        break;
     }
 
     if (result.error) {
@@ -339,7 +390,7 @@ export async function POST(request: Request, context: Context) {
       throw new Error(result.error.message);
     }
 
-    return NextResponse.json(await snapshot(slug, access.businessId), {
+    return NextResponse.json(await snapshot(slug, access.businessId, access.plan === "plus"), {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {

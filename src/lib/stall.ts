@@ -454,6 +454,17 @@ export function defaultStallSettings(): StallSettings {
 }
 
 // ==========================================
+// SECCIONES DEL MENÚ
+// ==========================================
+
+export type MenuSection = {
+  id: string;
+  name: string;
+  /** Sus platillos pasan por cocina (plan Plus). */
+  toKitchen: boolean;
+};
+
+// ==========================================
 // ESTADO COMPLETO DEL NEGOCIO
 // ==========================================
 
@@ -469,6 +480,9 @@ export type StallState = {
 
   dishes: Dish[];
   ingredients: Ingredient[];
+
+  /** En orden. Opcional para datos viejos. */
+  sections?: MenuSection[];
 
   openingCount: Record<string, number>;
   sales: Sale[];
@@ -492,6 +506,7 @@ export type PublicDish = {
   imageUrl: string | null;
   priceCents: number;
   portions: number;
+  sectionId: string | null;
 };
 
 export type PublicSnapshot = {
@@ -503,6 +518,7 @@ export type PublicSnapshot = {
   updatedAt: string;
 
   dishes: PublicDish[];
+  sections: MenuSection[];
   settings?: StallSettings;
 };
 
@@ -540,7 +556,11 @@ export function publicSnapshot(
       portions: s.isOpen
         ? (left.get(d.id) ?? 0)
         : 0,
+
+      sectionId: d.sectionId ?? null,
     })),
+
+    sections: s.sections ?? [],
   };
 }
 
@@ -566,6 +586,7 @@ export type OwnerView = {
 
   dishes: OwnerDish[];
   ingredients: Ingredient[];
+  sections: MenuSection[];
 
   today: CashUp;
   reservations: Reservation[];
@@ -628,6 +649,7 @@ export function ownerView(
     settings: s.settings,
 
     ingredients: s.ingredients,
+    sections: s.sections ?? [],
 
     today: cashUp(s),
     loyalty: s.loyalty,
@@ -666,6 +688,7 @@ export function ownerView(
         priceCents: d.priceCents,
 
         portions,
+        sectionId: d.sectionId ?? null,
 
         recipe: d.recipe,
         soldOut: d.soldOut,
