@@ -326,7 +326,6 @@ async function EmployeeContent({
         </div>
       </section>
 
-      {/* FUNCIONES FUTURAS */}
             
         {/* ACCESO REAL A MESAS PARA MESEROS Y ENCARGADOS */}
         <section className="mt-8">
@@ -368,67 +367,6 @@ async function EmployeeContent({
         </section>
 
 
-      <section className="mt-8">
-        <h2 className="text-xl font-black">
-          Herramientas del personal
-        </h2>
-
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          {[
-            {
-              icon: "🍽️",
-              title: "Mesas",
-              description:
-                "Tomar órdenes directamente desde las mesas.",
-            },
-            {
-              icon: "👨‍🍳",
-              title: "Cocina",
-              description:
-                "Gestionar la preparación y marcar pedidos listos.",
-            },
-            {
-              icon: "💳",
-              title: "Cobros",
-              description:
-                "Registrar pagos y entregas de pedidos.",
-            },
-            {
-              icon: "🔔",
-              title: "Notificaciones",
-              description:
-                "Recibir alertas de pedidos nuevos.",
-            },
-          ].map((tool) => (
-            <div
-              key={tool.title}
-              className="rounded-2xl border border-[#E8DDCF] bg-[#FAF8F5] p-5"
-            >
-              <p className="text-3xl">
-                {tool.icon}
-              </p>
-
-              <h3 className="mt-3 font-black">
-                {tool.title}
-              </h3>
-
-              <p className="mt-2 text-sm text-gray-600">
-                {tool.description}
-              </p>
-
-              <p className="mt-3 text-xs font-semibold text-[#A8321E]">
-                Próximamente
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <p className="mt-8 text-center text-xs text-gray-500">
-        Acceso por correo y contraseña.
-        El NIP rápido de seis dígitos
-        todavía no está habilitado.
-      </p>
     </main>
   );
 }
