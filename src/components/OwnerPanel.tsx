@@ -37,6 +37,7 @@ export function OwnerPanel({
   t,
   canSignOut,
   vapidKey = null,
+  tablesEnabled = false,
 }: {
   initial: OwnerView;
   lang: string;
@@ -44,6 +45,8 @@ export function OwnerPanel({
   t: Dictionary;
   canSignOut: boolean;
   vapidKey?: string | null;
+  /** Plan Medium o Plus: botón de Mesas y resumen. */
+  tablesEnabled?: boolean;
 }) {
   const o = t.owner;
   const es = lang === "es";
@@ -347,12 +350,14 @@ export function OwnerPanel({
               {o.studioLink}
             </Link>
 
+            {tablesEnabled && (
             <Link
               href={`/${lang}/empleado/mesas/${view.slug}`}
               className="inline-flex items-center gap-2 rounded-xl border border-[#eaded3] bg-white px-4 py-3 text-sm font-semibold text-[#4b3024] shadow-sm transition hover:border-brand hover:text-brand"
             >
               {lang === "es" ? "Mesas" : "Tables"}
             </Link>
+            )}
 
             <Link
               href={`/${lang}/panel/${view.slug}/menu`}
@@ -574,10 +579,12 @@ export function OwnerPanel({
             
             
       {/* RESUMEN DE MESAS PARA EL DUEÑO */}
-      <ActiveTablesSummary
-        slug={view.slug}
-        lang={lang}
-      />
+      {tablesEnabled && (
+        <ActiveTablesSummary
+          slug={view.slug}
+          lang={lang}
+        />
+      )}
 
 
       {/* PUNTO DE VENTA */}

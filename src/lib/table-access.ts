@@ -15,6 +15,12 @@ import { currentAccount } from "@/lib/auth/server";
 export const TABLE_ROLES = ["owner", "manager", "waiter"] as const;
 export type TableRole = (typeof TABLE_ROLES)[number];
 
+/** Atender mesas (abrir, pedir, cobrar, juntar): meseros y encargados. */
+export const canServe = (role: TableRole) => role === "waiter" || role === "manager";
+
+/** Crear, editar y desactivar mesas: dueño y encargado. */
+export const canConfigure = (role: TableRole) => role === "owner" || role === "manager";
+
 export const plansWithTables = (plan: string | null | undefined) =>
   plan === "medium" || plan === "plus";
 
@@ -83,4 +89,18 @@ export async function tableAccess(slug: string): Promise<TableAccess> {
     userId: me.id,
     role: member.role as TableRole,
   };
+}
+
+/** ¿El negocio tiene mesas en su plan? (para mostrar o esconder el botón) */
+export async function businessHasTables(slug: string): Promise<boolean> {
+  const { data, error } = await admin()
+    .from("businesses")
+    .select("plan")
+    .eq("slug", slug)
+    .maybeSingle();
+  if (error) {
+    console.error("plan:", error.message);
+    return false;
+  }
+  return plansWithTables(data?.plan);
 }

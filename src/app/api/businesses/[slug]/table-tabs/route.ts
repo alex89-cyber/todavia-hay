@@ -6,7 +6,7 @@ import { z } from "zod";
 import { admin } from "@/lib/accounts";
 import { menuAvailability } from "@/lib/inventory";
 import { store } from "@/lib/store";
-import { tableAccess } from "@/lib/table-access";
+import { canServe, tableAccess } from "@/lib/table-access";
 
 // ==========================================
 // TODAVÍA HAY
@@ -135,7 +135,7 @@ export type TabsSnapshot = {
 async function snapshot(slug: string, businessId: string): Promise<TabsSnapshot> {
   const db = admin();
 
-  const [tablesRes, tabsRes, paysRes, state] = await Promise.all([
+  const [tablesRes, tabsRes, state] = await Promise.all([
     db
       .from("restaurant_tables")
       .select("id, name, capacity, active, group_id")
@@ -149,16 +149,21 @@ async function snapshot(slug: string, businessId: string): Promise<TabsSnapshot>
       .eq("business_id", businessId)
       .eq("status", "open")
       .order("opened_at", { ascending: true }),
-    db
-      .from("sales")
-      .select("id, method, total_cents, created_at, table_tab_id, table_tabs!inner(status)")
-      .eq("business_id", businessId)
-      .eq("table_tabs.status", "open")
-      .order("created_at", { ascending: true }),
     store.get(slug),
   ]);
   if (tablesRes.error) throw tablesRes.error;
   if (tabsRes.error) throw tabsRes.error;
+
+  // Pagos de las cuentas abiertas (cuenta dividida). Va aparte: sales y
+  // table_tabs tienen dos llaves entre sí y un embed sería ambiguo.
+  const openIds = (tabsRes.data ?? []).map((t) => t.id as string);
+  const paysRes = openIds.length
+    ? await db
+        .from("sales")
+        .select("id, method, total_cents, created_at, table_tab_id")
+        .in("table_tab_id", openIds)
+        .order("created_at", { ascending: true })
+    : { data: [], error: null };
   if (paysRes.error) throw paysRes.error;
 
   const tabs: OpenTab[] = (tabsRes.data ?? []).map((t) => {
@@ -249,6 +254,9 @@ export async function POST(request: Request, context: Context) {
     const { slug } = await context.params;
     const access = await tableAccess(slug);
     if (!access.ok) return fail(access.message, access.status);
+    if (!canServe(access.role)) {
+      return fail("Abrir mesas, pedir y cobrar lo hacen los meseros y encargados.", 403);
+    }
 
     const parsed = Body.safeParse(await request.json().catch(() => null));
     if (!parsed.success) return fail("Datos inválidos.", 400);

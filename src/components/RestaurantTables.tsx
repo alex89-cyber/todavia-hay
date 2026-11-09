@@ -233,8 +233,8 @@ export default function RestaurantTables({
 
             <p className="mt-2 text-sm text-[#806b5d]">
               {es
-                ? "Configura las mesas y su capacidad. Los pedidos y la ocupación se conectarán después."
-                : "Set up tables and seating capacity. Orders and occupancy will be connected later."}
+                ? "Agrega tus mesas y cuántas personas caben. Los meseros las atienden desde su panel."
+                : "Add your tables and how many people fit. Waiters serve them from their dashboard."}
             </p>
 
             {!loading && (
@@ -419,12 +419,6 @@ export default function RestaurantTables({
                       : es ? "Inactiva" : "Inactive"}
                   </span>
                 </div>
-
-                <p className="mt-4 text-xs text-[#806b5d]">
-                  {es
-                    ? "Sin pedidos asociados todavía"
-                    : "Orders not connected yet"}
-                </p>
 
                 <div className="mt-4 grid grid-cols-2 gap-2">
                   <button

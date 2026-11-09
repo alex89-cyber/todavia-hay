@@ -8,8 +8,9 @@ import { connection } from "next/server";
 
 import { currentAccount } from "@/lib/auth/server";
 import { hasLocale } from "@/dictionaries";
-import { tableAccess } from "@/lib/table-access";
+import { canConfigure, tableAccess } from "@/lib/table-access";
 
+import RestaurantTables from "@/components/RestaurantTables";
 import StaffTablesManager from "@/components/StaffTablesManager";
 
 type Props = {
@@ -95,6 +96,7 @@ async function EmployeeTablesContent({
   }
 
   const business = { name: access.businessName };
+  const isOwnerRole = access.role === "owner";
   const backHref =
     access.role === "owner" ? `/${lang}/panel/${slug}` : `/${lang}/empleado`;
 
@@ -113,18 +115,49 @@ async function EmployeeTablesContent({
         </p>
 
         <h1 className="mt-2 text-3xl font-black text-[#302018]">
-          {es ? "Abrir mesa, pedir y cobrar" : "Open, order and charge"}
+          {isOwnerRole
+            ? es ? "Tus mesas" : "Your tables"
+            : es ? "Abrir mesa, pedir y cobrar" : "Open, order and charge"}
         </h1>
 
         <p className="mt-2 text-sm text-gray-600">
           {business.name}
+          {isOwnerRole &&
+            (es
+              ? " · Aquí agregas y editas mesas y ves cómo están. Los meseros las atienden desde su panel."
+              : " · Add and edit tables and see how they are doing. Waiters serve them from their dashboard.")}
         </p>
       </header>
 
-      <StaffTablesManager
-        slug={slug}
-        lang={es ? "es" : "en"}
-      />
+      {isOwnerRole ? (
+        <>
+          <div className="mt-8">
+            <RestaurantTables slug={slug} lang={lang} />
+          </div>
+
+          <section className="mt-10">
+            <h2 className="text-xl font-black text-[#302018]">
+              {es ? "Cómo están ahora" : "Right now"}
+            </h2>
+            <StaffTablesManager slug={slug} lang={es ? "es" : "en"} readOnly />
+          </section>
+        </>
+      ) : (
+        <>
+          <StaffTablesManager slug={slug} lang={es ? "es" : "en"} />
+
+          {canConfigure(access.role) && (
+            <details className="mt-10 rounded-2xl border border-[#eaded3] bg-white p-4">
+              <summary className="cursor-pointer text-sm font-bold text-[#302018]">
+                {es ? "Agregar o editar mesas" : "Add or edit tables"}
+              </summary>
+              <div className="mt-4">
+                <RestaurantTables slug={slug} lang={lang} />
+              </div>
+            </details>
+          )}
+        </>
+      )}
     </main>
   );
 }

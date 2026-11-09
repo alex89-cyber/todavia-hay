@@ -24,6 +24,8 @@ import type { OpenTab, TabsSnapshot } from "@/app/api/businesses/[slug]/table-ta
 type Props = {
   slug: string;
   lang: "es" | "en";
+  /** El dueño solo ve cómo están las mesas; atender es del mesero. */
+  readOnly?: boolean;
 };
 
 type Method = "cash" | "card" | "transfer";
@@ -146,7 +148,7 @@ const TEXT = {
   },
 };
 
-export default function StaffTablesManager({ slug, lang }: Props) {
+export default function StaffTablesManager({ slug, lang, readOnly = false }: Props) {
   const t = TEXT[lang];
   const es = lang === "es";
   const base = `/api/businesses/${encodeURIComponent(slug)}`;
@@ -648,6 +650,7 @@ export default function StaffTablesManager({ slug, lang }: Props) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm font-semibold text-gray-600">{data ? t.summary(freeCount, busyCount) : ""}</p>
         <div className="flex gap-2">
+          {!readOnly && (
           <button
             type="button"
             onClick={() => {
@@ -661,6 +664,7 @@ export default function StaffTablesManager({ slug, lang }: Props) {
           >
             {joining ? t.cancel : t.join}
           </button>
+          )}
           <button
             type="button"
             onClick={() => void load()}
@@ -673,7 +677,7 @@ export default function StaffTablesManager({ slug, lang }: Props) {
       </div>
 
       {messages}
-      {data && !data.isOpen && (
+      {data && !data.isOpen && !readOnly && (
         <p className="rounded-xl bg-amber-50 p-4 text-sm font-semibold text-amber-900">{t.closedDay}</p>
       )}
 
@@ -710,7 +714,7 @@ export default function StaffTablesManager({ slug, lang }: Props) {
                   setPicked((p) => (isPicked ? p.filter((x) => x !== place.tableId) : [...p, place.tableId]));
                 return;
               }
-              if (!place.active) return;
+              if (!place.active || readOnly) return;
               setError("");
               setNotice("");
               if (place.tab) {
@@ -736,7 +740,7 @@ export default function StaffTablesManager({ slug, lang }: Props) {
                 <button
                   type="button"
                   onClick={onTap}
-                  disabled={busy || !place.active || (joining && !canPick)}
+                  disabled={busy || readOnly || !place.active || (joining && !canPick)}
                   className="flex-1 text-left"
                 >
                   <span
@@ -764,7 +768,7 @@ export default function StaffTablesManager({ slug, lang }: Props) {
                     <span className="mt-1 block text-xs text-gray-600">{t.seats(place.capacity)}</span>
                   )}
                 </button>
-                {place.groupId && !place.tab && !joining && (
+                {place.groupId && !place.tab && !joining && !readOnly && (
                   <button
                     type="button"
                     onClick={() => void separate(place.groupId!)}
