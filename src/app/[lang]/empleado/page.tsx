@@ -44,24 +44,6 @@ const ROLE_NAMES: Record<string, string> = {
   staff: "Empleado",
 };
 
-const STATUS_NAMES: Record<string, string> = {
-  held: "Pendiente",
-  authorized: "Apartado",
-  captured: "Entregado",
-  voided: "Cancelado",
-  expired: "Vencido",
-  ready: "Listo",
-  pending: "Pendiente",
-  preparing: "Preparando",
-};
-
-function pesos(cents: number) {
-  return new Intl.NumberFormat("es-MX", {
-    style: "currency",
-    currency: "MXN",
-  }).format(cents / 100);
-}
-
 // ==========================================
 // PÁGINA
 // ==========================================
@@ -198,32 +180,53 @@ async function EmployeeContent({
     (item) => item.business.id,
   );
 
-  const { data: orders, error: ordersError } =
-    await db
-      .from("reservations")
-      .select(
-        "id, business_id, order_number, status, total_cents, created_at",
-      )
-      .in("business_id", businessIds)
-      .order("created_at", {
-        ascending: false,
-      })
-      .limit(40);
+  // Hoy, en hora de México.
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Mexico_City",
+  }).format(new Date());
+  const dayStart = new Date(`${today}T00:00:00-06:00`).toISOString();
 
-  if (ordersError) {
+  const [ordersRes, tabsRes] = await Promise.all([
+    db
+      .from("reservations")
+      .select("id, status, created_at")
+      .in("business_id", businessIds)
+      .gte("created_at", dayStart),
+    db
+      .from("table_tabs")
+      .select("id, status, opened_at")
+      .in("business_id", businessIds)
+      .or(`status.eq.open,opened_at.gte.${dayStart}`),
+  ]);
+
+  if (ordersRes.error || tabsRes.error) {
     throw new Error(
       "No se pudieron cargar los pedidos.",
     );
   }
 
-  const pending = (orders ?? []).filter(
-    (order) =>
-      ![
-        "captured",
-        "voided",
-        "expired",
-      ].includes(order.status as string),
-  ).length;
+  // Pedidos = apartados de la app + cuentas de mesa.
+  const orders = ordersRes.data ?? [];
+  const tabs = tabsRes.data ?? [];
+
+  const pending =
+    orders.filter(
+      (order) =>
+        ![
+          "captured",
+          "voided",
+          "expired",
+        ].includes(order.status as string),
+    ).length +
+    tabs.filter((tab) => tab.status === "open").length;
+
+  const totalToday =
+    orders.length +
+    tabs.filter(
+      (tab) =>
+        tab.status !== "cancelled" &&
+        (tab.opened_at as string) >= dayStart,
+    ).length;
 
   const es = lang === "es";
 
@@ -314,105 +317,13 @@ async function EmployeeContent({
 
         <div className="rounded-2xl bg-[#EAF3E8] p-5">
           <p className="text-sm text-[#4E7057]">
-            Pedidos recientes
+            Pedidos totales de hoy
           </p>
 
           <p className="mt-2 text-3xl font-black">
-            {(orders ?? []).length}
+            {totalToday}
           </p>
         </div>
-      </section>
-
-      {/* PEDIDOS */}
-
-      <section
-        id="pedidos"
-        className="mt-8 rounded-3xl border border-[#E8DDCF] bg-white p-5 sm:p-6"
-      >
-        <div>
-          <h2 className="text-xl font-black">
-            Pedidos del negocio
-          </h2>
-
-          <p className="mt-2 text-sm text-gray-600">
-            Aquí aparecen los últimos
-            pedidos registrados en tus
-            establecimientos autorizados.
-          </p>
-        </div>
-
-        {(orders ?? []).length === 0 ? (
-          <p className="mt-6 rounded-xl bg-[#FAF6F1] p-4 text-sm">
-            Todavía no hay pedidos para
-            mostrar.
-          </p>
-        ) : (
-          <div className="mt-5 divide-y divide-[#EEE5DA]">
-            {(orders ?? []).map((order) => {
-              const business =
-                staffMemberships.find(
-                  (item) =>
-                    item.business.id ===
-                    order.business_id,
-                )?.business;
-
-              const date =
-                new Intl.DateTimeFormat(
-                  "es-MX",
-                  {
-                    dateStyle: "short",
-                    timeStyle: "short",
-                    timeZone:
-                      "America/Mexico_City",
-                  },
-                ).format(
-                  new Date(order.created_at),
-                );
-
-              return (
-                <article
-                  key={order.id}
-                  className="flex flex-wrap items-start justify-between gap-3 py-4"
-                >
-                  <div>
-                    <p className="font-black">
-                      Pedido{" "}
-                      {order.order_number
-                        ? `#${order.order_number}`
-                        : ""}
-                    </p>
-
-                    <p className="mt-1 text-sm text-gray-600">
-                      {business?.name ??
-                        "Establecimiento"}
-                    </p>
-
-                    <p className="mt-1 text-xs text-gray-500">
-                      {date}
-                    </p>
-                  </div>
-
-                  <div className="text-right">
-                    <p className="font-black">
-                      {pesos(
-                        Number(
-                          order.total_cents ?? 0,
-                        ),
-                      )}
-                    </p>
-
-                    <p className="mt-2 text-xs font-bold text-[#A8321E]">
-                      {STATUS_NAMES[
-                        order.status as string
-                      ] ??
-                        order.status}
-                    </p>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        )}
       </section>
 
       {/* FUNCIONES FUTURAS */}
