@@ -2,6 +2,7 @@
 import { z } from "zod";
 
 import { admin } from "@/lib/accounts";
+import { sameOrigin } from "@/lib/origin";
 import { platformAdmin } from "@/lib/platform-admin";
 
 const PlanChange = z.object({
@@ -12,12 +13,7 @@ const PlanChange = z.object({
 export async function PATCH(request: Request) {
   // Solo solicitudes provenientes de
   // nuestra propia página web.
-  const origin = request.headers.get("origin");
-
-  if (
-    !origin ||
-    origin !== new URL(request.url).origin
-  ) {
+  if (!sameOrigin(request)) {
     return Response.json(
       { error: "Origen no autorizado" },
       { status: 403 },

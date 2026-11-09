@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { currentAccount } from "@/lib/auth/server";
 import { admin } from "@/lib/accounts";
+import { origin as publicOrigin, sameOrigin } from "@/lib/origin";
 
 import {
   getBusinessPlan,
@@ -124,15 +125,7 @@ async function ownerBusiness(slug: string) {
 // ==========================================
 
 function trustedOrigin(request: Request) {
-  const incoming = request.headers.get("origin");
-
-  if (!incoming) {
-    return false;
-  }
-
-  return (
-    incoming === new URL(request.url).origin
-  );
+  return sameOrigin(request);
 }
 
 // ==========================================
@@ -316,7 +309,7 @@ export async function POST(
   // ========================================
 
   const redirectTo =
-    `${new URL(request.url).origin}` +
+    `${publicOrigin(request)}` +
     "/es/aceptar-invitacion";
 
   const {

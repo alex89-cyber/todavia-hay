@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { admin } from "@/lib/accounts";
+import { sameOrigin } from "@/lib/origin";
 import { menuAvailability } from "@/lib/inventory";
 import { store } from "@/lib/store";
 import { canServe, tableAccess } from "@/lib/table-access";
@@ -245,8 +246,7 @@ export async function GET(_request: Request, context: Context) {
 }
 
 export async function POST(request: Request, context: Context) {
-  const origin = request.headers.get("origin");
-  if (!origin || origin !== new URL(request.url).origin) {
+  if (!sameOrigin(request)) {
     return fail("Origen no autorizado", 403);
   }
 

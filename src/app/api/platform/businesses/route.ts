@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { admin } from "@/lib/accounts";
+import { origin as publicOrigin, sameOrigin } from "@/lib/origin";
 import { platformAdmin } from "@/lib/platform-admin";
 
 // ==========================================
@@ -46,8 +47,7 @@ async function findUserId(email: string): Promise<string | null> {
 }
 
 export async function POST(request: Request) {
-  const origin = request.headers.get("origin");
-  if (!origin || origin !== new URL(request.url).origin) {
+  if (!sameOrigin(request)) {
     return fail("Origen no autorizado", 403);
   }
 
@@ -105,7 +105,7 @@ export async function POST(request: Request) {
     userId = await findUserId(ownerEmail);
     if (!userId) {
       const { data, error } = await db.auth.admin.inviteUserByEmail(ownerEmail, {
-        redirectTo: `${new URL(request.url).origin}/api/auth/callback?next=${encodeURIComponent(panel)}`,
+        redirectTo: `${publicOrigin(request)}/api/auth/callback?next=${encodeURIComponent(panel)}`,
         data: {
           next: panel,
           lang: "es",
