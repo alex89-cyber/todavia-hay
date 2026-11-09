@@ -6,7 +6,6 @@ import { useParams } from "next/navigation";
 import { Suspense } from "react";
 import type { FormEvent } from "react";
 
-import RestaurantTables from "@/components/RestaurantTables";
 import { CameraCapture } from "@/components/CameraCapture";
 
 import BusinessIdentitySection from "./BusinessIdentitySection";
@@ -415,24 +414,6 @@ function BusinessConfigurationContent() {
           </div>
         </aside>
       </form>
-
-      {/* ======================================
-          ADMINISTRACIÓN DE MESAS
-
-          Se coloca FUERA del formulario
-          de configuración general porque
-          tiene su propio formulario.
-
-          Permite agregar, editar, activar
-          o desactivar mesas.
-      ====================================== */}
-
-      <div className="mx-auto w-full max-w-7xl">
-        <RestaurantTables
-          slug={slug}
-          lang={lang}
-        />
-      </div>
 
       {/* CÁMARA */}
 

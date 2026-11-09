@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { admin } from "@/lib/accounts";
-import { isOwner } from "@/lib/owner-auth";
+import { canConfigure, tableAccess } from "@/lib/table-access";
 
 type Context = {
   params: Promise<{ slug: string }>;
@@ -30,23 +30,14 @@ const UpdateTable = z.object({
 );
 
 async function getBusiness(slug: string) {
-  if (!(await isOwner(slug))) {
+  const access = await tableAccess(slug);
+  if (!access.ok) {
+    return { error: access.reason === "not_found" ? ("not_found" as const) : ("forbidden" as const) };
+  }
+  if (!canConfigure(access.role)) {
     return { error: "forbidden" as const };
   }
-
-  const { data, error } = await admin()
-    .from("businesses")
-    .select("id")
-    .eq("slug", slug)
-    .maybeSingle();
-
-  if (error) throw error;
-
-  if (!data) {
-    return { error: "not_found" as const };
-  }
-
-  return { id: data.id as string };
+  return { id: access.businessId };
 }
 
 

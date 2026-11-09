@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { admin } from "@/lib/accounts";
-import { tableAccess } from "@/lib/table-access";
+import { canServe, tableAccess } from "@/lib/table-access";
 
 // ==========================================
 // TODAVÍA HAY
@@ -57,6 +57,15 @@ async function authorize(slug: string) {
   return access.ok
     ? { ok: true as const, businessId: access.businessId }
     : { ok: false as const, message: access.message, status: access.status };
+}
+
+async function authorizeServe(slug: string) {
+  const access = await tableAccess(slug);
+  if (!access.ok) return { ok: false as const, message: access.message, status: access.status };
+  if (!canServe(access.role)) {
+    return { ok: false as const, message: "Juntar y separar mesas lo hacen los meseros y encargados.", status: 403 };
+  }
+  return { ok: true as const, businessId: access.businessId };
 }
 
 /** Mesas que tienen una cuenta abierta (directa o por su grupo). */
@@ -143,7 +152,7 @@ export async function POST(
 ) {
   try {
     const { slug } = await context.params;
-    const access = await authorize(slug);
+    const access = await authorizeServe(slug);
 
     if (!access.ok) {
       return fail(access.message, access.status);
