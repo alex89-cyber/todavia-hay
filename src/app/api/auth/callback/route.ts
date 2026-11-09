@@ -1,47 +1,100 @@
+
 import { NextResponse } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
+
 import { safeNext } from "@/lib/auth/config";
 import { supabaseServer } from "@/lib/auth/server";
 import { getProfile, saveProfile } from "@/lib/accounts";
 
-// Where Supabase sends people back: email confirmation, invitation, password
-// reset and Google. Opens the session, then goes on to `next`.
-// Email links (templates in Supabase → Authentication → Emails) look like
-//   {{ .SiteURL }}/api/auth/callback?token_hash={{ .TokenHash }}&type=email&next={{ .Data.next }}
-// with type=invite (owners, next=/es/panel) and type=recovery for password resets.
-// Google and in-browser flows come back with ?code=.
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const publicOrigin =
-  process.env.NEXT_PUBLIC_SITE_URL ||
-  process.env.RENDER_EXTERNAL_URL ||
-  url.origin;
-  const p = url.searchParams;
-  const next = safeNext(p.get("next"), "/es/cuenta");
+  const params = url.searchParams;
+
+  // Usar la dirección pública de Render.
+  // Nunca redirigir usuarios hacia localhost interno.
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.RENDER_EXTERNAL_URL ||
+    url.origin;
+
+  const origin = new URL(siteUrl).origin;
+
+  const next = safeNext(
+    params.get("next"),
+    "/es/cuenta"
+  );
+
+  const lang = next.startsWith("/en") ? "en" : "es";
+  const type = params.get("type");
   const sb = await supabaseServer();
 
-  let ok = false;
-  const type = p.get("type");
-  if (p.get("code")) {
-    ok = !(await sb.auth.exchangeCodeForSession(p.get("code")!)).error;
-  } else if (p.get("token_hash") && type) {
-    ok = !(await sb.auth.verifyOtp({ token_hash: p.get("token_hash")!, type: type as EmailOtpType })).error;
+  let valid = false;
+
+  if (params.get("code")) {
+    const { error } =
+      await sb.auth.exchangeCodeForSession(
+        params.get("code")!
+      );
+
+    valid = !error;
+  } else if (params.get("token_hash") && type) {
+    const { error } = await sb.auth.verifyOtp({
+      token_hash: params.get("token_hash")!,
+      type: type as EmailOtpType,
+    });
+
+    valid = !error;
   }
-  const lang = next.startsWith("/en") ? "en" : "es";
-  if (!ok) return NextResponse.redirect(new URL(`/${lang}/login?next=${encodeURIComponent(next)}&error=link`, url.origin));
+
+  if (!valid) {
+    const loginUrl = new URL(
+      `/${lang}/login`,
+      origin
+    );
+
+    loginUrl.searchParams.set("error", "link");
+
+    return NextResponse.redirect(loginUrl);
+  }
 
   const { data } = await sb.auth.getUser();
   const user = data.user;
+
   if (user) {
-    // The phone typed at sign-up is saved now, bringing counter stamps along.
-    const phone = (user.user_metadata?.phone as string | undefined) ?? null;
-    const profile = await getProfile(user.id).catch(() => null);
-    if (phone && profile && !profile.phone && profile.firstName && profile.lastName) {
-      await saveProfile(user.id, { firstName: profile.firstName, lastName: profile.lastName, phone }).catch((e) =>
-        console.error("callback: phone not saved", e),
-      );
+    const phone =
+      (user.user_metadata?.phone as string | undefined) ??
+      null;
+
+    const profile = await getProfile(user.id).catch(
+      () => null
+    );
+
+    if (
+      phone &&
+      profile &&
+      !profile.phone &&
+      profile.firstName &&
+      profile.lastName
+    ) {
+      await saveProfile(user.id, {
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+        phone,
+      }).catch((error) => {
+        console.error(
+          "callback: phone not saved",
+          error
+        );
+      });
     }
   }
-  const to = type === "invite" || type === "recovery" ? `/${lang}/nueva-contrasena?next=${encodeURIComponent(next)}` : next;
-  return NextResponse.redirect(new URL(to, url.origin));
+
+  const destination =
+    type === "invite" || type === "recovery"
+      ? `/${lang}/nueva-contrasena?next=${encodeURIComponent(next)}`
+      : next;
+
+  return NextResponse.redirect(
+    new URL(destination, origin)
+  );
 }
