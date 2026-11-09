@@ -59,8 +59,25 @@ export type CashUpTables = {
   timezone: string;
   openedAt: string | null;
   ventas: SaleLineRow[];
+  /**
+   * Un renglón por cobro. Es la fuente del dinero (total, por hora y por
+   * método): una cuenta de mesa pagada en partes tiene varios cobros, pero
+   * sus platillos solo aparecen una vez en ventas.
+   */
+  pagos: PaymentRow[];
   inventario: StockRow[];
   apartados: ReservationRow[];
+};
+
+export type PaymentRow = {
+  venta: string;
+  /** Agrupa los cobros de una misma cuenta de mesa. */
+  cuenta: string;
+  hora: string;
+  horaDelDia: string;
+  metodo: string;
+  importe: number;
+  origen: SaleOrigin;
 };
 
 // Ventas históricas guardadas en Supabase.
@@ -311,11 +328,22 @@ export function cashUpTables(
       }),
     );
 
+  const pagos: PaymentRow[] = s.sales.map((sale) => ({
+    venta: sale.id,
+    cuenta: sale.tableTabId ?? sale.id,
+    hora: sale.at,
+    horaDelDia: makeHour(sale.at, hour),
+    metodo: METHOD[lang][sale.method],
+    importe: sale.totalCents / 100,
+    origen: origin(sale.reservationId, sale.tableTabId),
+  }));
+
   return {
     currency: s.currency,
     timezone: s.timezone,
     openedAt: s.openedAt,
     ventas,
+    pagos,
     inventario,
     apartados,
   };
@@ -404,11 +432,22 @@ export function historicalCashUpTables({
       }),
     );
 
+  const pagos: PaymentRow[] = sales.map((sale) => ({
+    venta: sale.id,
+    cuenta: sale.table_tab_id ?? sale.id,
+    hora: sale.created_at,
+    horaDelDia: makeHour(sale.created_at, hour),
+    metodo: METHOD[lang][sale.method],
+    importe: sale.total_cents / 100,
+    origen: origin(sale.reservation_id, sale.table_tab_id),
+  }));
+
   return {
     currency,
     timezone,
     openedAt,
     ventas,
+    pagos,
 
     inventario:
       inventoryTables(

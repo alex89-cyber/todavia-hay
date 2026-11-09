@@ -3,9 +3,9 @@
 -- Una cuenta pertenece a una mesa (o a un grupo de mesas juntas) mientras
 -- está abierta. Cada platillo pedido descuenta inventario en ese momento,
 -- igual que una venta de mostrador, para que la página pública muestre lo
--- que de verdad queda. Cancelar un platillo lo regresa. Al cobrar, la
--- cuenta se vuelve una venta normal (sales + sale_items) con su método de
--- pago y queda ligada con sales.table_tab_id.
+-- que de verdad queda. Cancelar un platillo lo regresa. Se cobra en uno
+-- o varios pagos; cada pago es una venta (sales) con su método, ligada
+-- con sales.table_tab_id.
 --
 -- Todo se hace con las funciones de abajo, solo desde el servidor.
 
@@ -244,6 +244,17 @@ begin
     return;
   end if;
 
+  -- Si ya se pagó parte, la cuenta no puede quedar debajo de lo pagado.
+  if (
+    select coalesce(sum(qty * price_cents), 0)
+    from table_tab_items
+    where tab_id = v_item.tab_id and cancelled_at is null and id <> v_item.id
+  ) < (
+    select coalesce(sum(total_cents), 0) from sales where table_tab_id = v_item.tab_id
+  ) then
+    raise exception 'already_paid';
+  end if;
+
   update table_tab_items
   set cancelled_at = now(), cancelled_by = p_user
   where id = p_item;
@@ -256,13 +267,21 @@ end;
 $$;
 
 -- ------------------------------------------
--- Cobrar la cuenta
+-- Cobrar la cuenta, completa o en varios pagos
+--
+-- Cada pago es una venta (sales) con su método y su monto, ligada a la
+-- cuenta con table_tab_id. p_amount null = lo que falta. El pago que
+-- completa el total cierra la cuenta y lleva los platillos (sale_items),
+-- así cada platillo se cuenta una sola vez en el corte.
 -- ------------------------------------------
+
+drop function if exists pay_table_tab(uuid, text, uuid);
 
 create or replace function pay_table_tab(
   p_tab uuid,
   p_method text,
-  p_user uuid default null
+  p_user uuid default null,
+  p_amount int default null
 )
 returns uuid
 language plpgsql
@@ -274,6 +293,8 @@ declare
   v_day uuid;
   v_sale uuid;
   v_total int;
+  v_paid int;
+  v_amount int;
 begin
   if not is_server() then
     raise exception 'forbidden';
@@ -291,12 +312,21 @@ begin
     raise exception 'tab_closed';
   end if;
 
+  if not exists (select 1 from table_tab_items where tab_id = p_tab and cancelled_at is null) then
+    raise exception 'empty_tab';
+  end if;
+
   select coalesce(sum(qty * price_cents), 0) into v_total
   from table_tab_items
   where tab_id = p_tab and cancelled_at is null;
 
-  if not exists (select 1 from table_tab_items where tab_id = p_tab and cancelled_at is null) then
-    raise exception 'empty_tab';
+  select coalesce(sum(total_cents), 0) into v_paid
+  from sales
+  where table_tab_id = p_tab;
+
+  v_amount := coalesce(p_amount, v_total - v_paid);
+  if v_amount <= 0 or v_amount > v_total - v_paid then
+    raise exception 'invalid_amount';
   end if;
 
   select id into v_day
@@ -306,20 +336,22 @@ begin
   limit 1;
 
   insert into sales (business_id, day_id, method, total_cents, table_tab_id)
-  values (v_tab.business_id, v_day, p_method::payment_method, v_total, v_tab.id)
+  values (v_tab.business_id, v_day, p_method::payment_method, v_amount, v_tab.id)
   returning id into v_sale;
 
-  -- sale_items lleva un renglón por platillo. Si el precio cambió a media
-  -- cuenta, se guarda el promedio para que el total cuadre.
-  insert into sale_items (sale_id, dish_id, qty, price_cents)
-  select v_sale, dish_id, sum(qty), round(sum(qty * price_cents)::numeric / sum(qty))::int
-  from table_tab_items
-  where tab_id = p_tab and cancelled_at is null
-  group by dish_id;
+  if v_paid + v_amount = v_total then
+    -- Un renglón por platillo. Si el precio cambió a media cuenta, se
+    -- guarda el promedio.
+    insert into sale_items (sale_id, dish_id, qty, price_cents)
+    select v_sale, dish_id, sum(qty), round(sum(qty * price_cents)::numeric / sum(qty))::int
+    from table_tab_items
+    where tab_id = p_tab and cancelled_at is null
+    group by dish_id;
 
-  update table_tabs
-  set status = 'paid', closed_at = now(), closed_by = p_user, sale_id = v_sale
-  where id = p_tab;
+    update table_tabs
+    set status = 'paid', closed_at = now(), closed_by = p_user, sale_id = v_sale
+    where id = p_tab;
+  end if;
 
   update businesses set updated_at = now() where id = v_tab.business_id;
 
@@ -357,6 +389,10 @@ begin
     raise exception 'tab_closed';
   end if;
 
+  if exists (select 1 from sales where table_tab_id = p_tab) then
+    raise exception 'has_payments';
+  end if;
+
   select jsonb_agg(jsonb_build_object('dish_id', dish_id, 'qty', qty))
   into v_lines
   from table_tab_items
@@ -379,10 +415,10 @@ $$;
 revoke execute on function open_table_tab(uuid, uuid, int, uuid) from public, anon, authenticated;
 revoke execute on function add_table_tab_items(uuid, jsonb, uuid) from public, anon, authenticated;
 revoke execute on function cancel_table_tab_item(uuid, uuid) from public, anon, authenticated;
-revoke execute on function pay_table_tab(uuid, text, uuid) from public, anon, authenticated;
+revoke execute on function pay_table_tab(uuid, text, uuid, int) from public, anon, authenticated;
 revoke execute on function cancel_table_tab(uuid, uuid) from public, anon, authenticated;
 grant execute on function open_table_tab(uuid, uuid, int, uuid) to service_role;
 grant execute on function add_table_tab_items(uuid, jsonb, uuid) to service_role;
 grant execute on function cancel_table_tab_item(uuid, uuid) to service_role;
-grant execute on function pay_table_tab(uuid, text, uuid) to service_role;
+grant execute on function pay_table_tab(uuid, text, uuid, int) to service_role;
 grant execute on function cancel_table_tab(uuid, uuid) to service_role;

@@ -360,14 +360,16 @@ export function CashUpDashboard({
 
   const data = useMemo(() => {
     const v = tables.ventas;
-    const total = v.reduce((s, r) => s + r.importe, 0);
-    const saleCount = new Set(v.map((r) => r.venta)).size;
+    const p = tables.pagos;
+    const total = p.reduce((s, r) => s + r.importe, 0);
+    // Una cuenta de mesa pagada en partes cuenta como una sola venta.
+    const saleCount = new Set(p.map((r) => r.cuenta)).size;
     const dishCount = v.reduce((s, r) => s + r.cantidad, 0);
     const byDish = sumBy(v, (r) => r.platillo, (r) => r.importe).sort((a, b) => b.value - a.value);
     const qtyByDish = new Map(sumBy(v, (r) => r.platillo, (r) => r.cantidad).map((p) => [p.label, p.value]));
     for (const d of byDish) d.note = `${qtyByDish.get(d.label) ?? 0} ${lang === "es" ? "vendidos" : "sold"}`;
-    const byHour = sumBy(v, (r) => r.horaDelDia, (r) => r.importe).sort((a, b) => a.label.localeCompare(b.label));
-    const byMethod = sumBy(v, (r) => r.metodo, (r) => r.importe).sort((a, b) => b.value - a.value);
+    const byHour = sumBy(p, (r) => r.horaDelDia, (r) => r.importe).sort((a, b) => a.label.localeCompare(b.label));
+    const byMethod = sumBy(p, (r) => r.metodo, (r) => r.importe).sort((a, b) => b.value - a.value);
     const stock = [...tables.inventario]
       .filter((r) => r.usado > 0)
       .sort((a, b) => b.usadoPct - a.usadoPct)

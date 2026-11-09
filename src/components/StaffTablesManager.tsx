@@ -13,7 +13,8 @@ import type { OpenTab, TabsSnapshot } from "@/app/api/businesses/[slug]/table-ta
 // - Abrir una mesa (cuántas personas).
 // - Tomar el pedido desde el menú.
 // - Cancelar un platillo o la cuenta.
-// - Cobrar con efectivo, tarjeta o transferencia.
+// - Cobrar con efectivo, tarjeta o transferencia,
+//   en uno o varios pagos.
 // - Juntar y separar mesas libres.
 //
 // Crear o editar mesas sigue siendo del
@@ -66,6 +67,13 @@ const TEXT = {
     card: "Tarjeta",
     transfer: "Transferencia",
     paid: "Cuenta cobrada. La mesa quedó libre.",
+    partPaid: (left: string) => `Pago registrado. Falta ${left}.`,
+    paidSoFar: "Pagado",
+    leftToPay: "Falta",
+    amount: "Monto de este pago",
+    all: "Todo",
+    perPerson: (n: number) => `Entre ${n}`,
+    badAmount: "Escribe un monto entre $1 y lo que falta.",
     cancelTab: "Cancelar cuenta",
     cancelTabAsk: "¿Cancelar toda la cuenta? Se regresa el inventario y la mesa queda libre.",
     cancelled: "Cuenta cancelada.",
@@ -111,6 +119,13 @@ const TEXT = {
     card: "Card",
     transfer: "Transfer",
     paid: "Bill paid. The table is free.",
+    partPaid: (left: string) => `Payment saved. ${left} left.`,
+    paidSoFar: "Paid",
+    leftToPay: "Left",
+    amount: "Amount for this payment",
+    all: "All",
+    perPerson: (n: number) => `Split ${n}`,
+    badAmount: "Enter an amount between $1 and what's left.",
     cancelTab: "Cancel bill",
     cancelTabAsk: "Cancel the whole bill? Stock goes back and the table is freed.",
     cancelled: "Bill cancelled.",
@@ -153,6 +168,7 @@ export default function StaffTablesManager({ slug, lang }: Props) {
   const [cart, setCart] = useState<Record<string, number>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [paying, setPaying] = useState(false);
+  const [amount, setAmount] = useState("");
 
   const money = useMemo(
     () =>
@@ -283,7 +299,11 @@ export default function StaffTablesManager({ slug, lang }: Props) {
     setCart({});
     setNotes({});
     setPaying(false);
+    setAmount("");
   }
+
+  const leftCents = tab ? Math.max(0, tab.totalCents - tab.paidCents) : 0;
+  const toAmount = (cents: number) => (cents / 100).toFixed(2);
 
   // ----------------------------------------
   // Acciones
@@ -316,8 +336,23 @@ export default function StaffTablesManager({ slug, lang }: Props) {
 
   async function pay(method: Method) {
     if (!tab) return;
-    const next = await act({ action: "pay", tabId: tab.id, method }, t.paid);
-    if (next) {
+    const cents = Math.round(Number(amount.replace(",", ".")) * 100);
+    if (!Number.isFinite(cents) || cents < 1 || cents > leftCents) {
+      setError(t.badAmount);
+      return;
+    }
+    const next = await act(
+      { action: "pay", tabId: tab.id, method, ...(cents < leftCents ? { amountCents: cents } : {}) },
+      "",
+    );
+    if (!next) return;
+    const still = next.tabs.find((x) => x.id === tab.id);
+    if (still) {
+      const left = still.totalCents - still.paidCents;
+      setNotice(t.partPaid(fmt(left)));
+      setAmount(toAmount(left));
+    } else {
+      setNotice(t.paid);
       setTabId(null);
       resetOrder();
     }
@@ -503,18 +538,68 @@ export default function StaffTablesManager({ slug, lang }: Props) {
               <span className="text-2xl font-black tabular-nums text-[#302018]">{fmt(tab.totalCents)}</span>
             </div>
 
+            {tab.paidCents > 0 && (
+              <div className="mt-3 rounded-xl bg-[#fff7ef] p-3 text-sm">
+                <ul className="space-y-1">
+                  {tab.payments.map((p) => (
+                    <li key={p.id} className="flex justify-between text-gray-700">
+                      <span>✓ {t[p.method]}</span>
+                      <span className="tabular-nums">{fmt(p.amountCents)}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2 flex justify-between border-t border-[#eaded3] pt-2 font-black text-[#302018]">
+                  <span>{t.leftToPay}</span>
+                  <span className="tabular-nums">{fmt(leftCents)}</span>
+                </p>
+              </div>
+            )}
+
             {!paying ? (
               <button
                 type="button"
-                onClick={() => setPaying(true)}
-                disabled={busy || tab.items.length === 0}
+                onClick={() => {
+                  setAmount(toAmount(leftCents));
+                  setPaying(true);
+                }}
+                disabled={busy || tab.items.length === 0 || leftCents === 0}
                 className="mt-4 w-full rounded-xl bg-[#244D38] px-5 py-4 text-base font-black text-white disabled:opacity-40"
               >
-                {t.charge(fmt(tab.totalCents))}
+                {t.charge(fmt(leftCents))}
               </button>
             ) : (
               <div className="mt-4 rounded-xl bg-[#EDF4E9] p-3">
-                <p className="text-sm font-bold text-[#244D38]">{t.howPay}</p>
+                <label className="block text-sm font-bold text-[#244D38]" htmlFor="pay-amount">
+                  {t.amount}
+                </label>
+                <input
+                  id="pay-amount"
+                  inputMode="decimal"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value.replace(/[^0-9.,]/g, ""))}
+                  className="mt-1 w-full rounded-lg border border-[#cfe0c6] bg-white px-3 py-2 text-lg font-black tabular-nums"
+                />
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAmount(toAmount(leftCents))}
+                    className="rounded-full border border-[#244D38] px-3 py-1 text-xs font-bold text-[#244D38]"
+                  >
+                    {t.all}
+                  </button>
+                  {tab.partySize > 1 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAmount(toAmount(Math.min(leftCents, Math.ceil(tab.totalCents / tab.partySize))))
+                      }
+                      className="rounded-full border border-[#244D38] px-3 py-1 text-xs font-bold text-[#244D38]"
+                    >
+                      {t.perPerson(tab.partySize)}
+                    </button>
+                  )}
+                </div>
+                <p className="mt-3 text-sm font-bold text-[#244D38]">{t.howPay}</p>
                 <div className="mt-2 grid grid-cols-3 gap-2">
                   {(["cash", "card", "transfer"] as const).map((m) => (
                     <button
@@ -522,7 +607,7 @@ export default function StaffTablesManager({ slug, lang }: Props) {
                       type="button"
                       onClick={() => void pay(m)}
                       disabled={busy}
-                      className="rounded-lg bg-[#244D38] px-2 py-3 text-sm font-bold text-white disabled:opacity-40"
+                      className="min-w-0 rounded-lg bg-[#244D38] px-1 py-3 text-xs font-bold leading-tight text-white [overflow-wrap:anywhere] disabled:opacity-40 sm:text-sm"
                     >
                       {t[m]}
                     </button>
@@ -538,6 +623,7 @@ export default function StaffTablesManager({ slug, lang }: Props) {
               </div>
             )}
 
+            {tab.paidCents === 0 && (
             <button
               type="button"
               onClick={() => void cancelTab()}
@@ -546,6 +632,7 @@ export default function StaffTablesManager({ slug, lang }: Props) {
             >
               {t.cancelTab}
             </button>
+            )}
           </section>
         </div>
       </div>

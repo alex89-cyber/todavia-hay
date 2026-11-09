@@ -18,7 +18,7 @@ import { tableAccess } from "@/lib/table-access";
 //   { action: "open", tableId, partySize }
 //   { action: "add", tabId, lines: [{ dishId, qty, note? }] }
 //   { action: "cancelItem", itemId }
-//   { action: "pay", tabId, method }
+//   { action: "pay", tabId, method, amountCents? }
 //   { action: "cancelTab", tabId }
 //
 // Cada acción pasa por una función SQL que
@@ -53,6 +53,8 @@ const Body = z.discriminatedUnion("action", [
     action: z.literal("pay"),
     tabId: z.string().uuid(),
     method: z.enum(["cash", "card", "transfer"]),
+    /** Pago parcial; sin monto se cobra lo que falta. */
+    amountCents: z.number().int().min(1).max(100_000_000).optional(),
   }),
   z.object({ action: z.literal("cancelTab"), tabId: z.string().uuid() }),
 ]);
@@ -69,6 +71,12 @@ const KNOWN: Record<string, { message: string; status: number }> = {
   insufficient_stock: { message: "Ya no alcanza el inventario para ese pedido.", status: 409 },
   sold_out: { message: "Uno de los platillos está agotado.", status: 409 },
   dish_not_found: { message: "Uno de los platillos ya no está en el menú.", status: 409 },
+  already_paid: {
+    message: "Ya se pagó parte de la cuenta; no puede quedar por debajo de lo pagado.",
+    status: 409,
+  },
+  has_payments: { message: "La cuenta ya tiene pagos; no se puede cancelar.", status: 409 },
+  invalid_amount: { message: "El monto es mayor a lo que falta por pagar.", status: 409 },
   empty_tab: { message: "La cuenta no tiene platillos. Cancélala en lugar de cobrar.", status: 409 },
 };
 
@@ -98,6 +106,9 @@ export type OpenTab = {
   openedAt: string;
   items: TabItem[];
   totalCents: number;
+  /** Pagos ya hechos (cuenta dividida). */
+  payments: { id: string; method: "cash" | "card" | "transfer"; amountCents: number; at: string }[];
+  paidCents: number;
 };
 
 export type TabsSnapshot = {
@@ -124,7 +135,7 @@ export type TabsSnapshot = {
 async function snapshot(slug: string, businessId: string): Promise<TabsSnapshot> {
   const db = admin();
 
-  const [tablesRes, tabsRes, state] = await Promise.all([
+  const [tablesRes, tabsRes, paysRes, state] = await Promise.all([
     db
       .from("restaurant_tables")
       .select("id, name, capacity, active, group_id")
@@ -138,10 +149,17 @@ async function snapshot(slug: string, businessId: string): Promise<TabsSnapshot>
       .eq("business_id", businessId)
       .eq("status", "open")
       .order("opened_at", { ascending: true }),
+    db
+      .from("sales")
+      .select("id, method, total_cents, created_at, table_tab_id, table_tabs!inner(status)")
+      .eq("business_id", businessId)
+      .eq("table_tabs.status", "open")
+      .order("created_at", { ascending: true }),
     store.get(slug),
   ]);
   if (tablesRes.error) throw tablesRes.error;
   if (tabsRes.error) throw tabsRes.error;
+  if (paysRes.error) throw paysRes.error;
 
   const tabs: OpenTab[] = (tabsRes.data ?? []).map((t) => {
     const items = (
@@ -165,6 +183,14 @@ async function snapshot(slug: string, businessId: string): Promise<TabsSnapshot>
         note: i.note,
         createdAt: i.created_at,
       }));
+    const payments = (paysRes.data ?? [])
+      .filter((p) => p.table_tab_id === t.id)
+      .map((p) => ({
+        id: p.id as string,
+        method: p.method as "cash" | "card" | "transfer",
+        amountCents: p.total_cents as number,
+        at: p.created_at as string,
+      }));
     return {
       id: t.id,
       tableId: t.table_id,
@@ -173,6 +199,8 @@ async function snapshot(slug: string, businessId: string): Promise<TabsSnapshot>
       openedAt: t.opened_at,
       items,
       totalCents: items.reduce((sum, i) => sum + i.qty * i.priceCents, 0),
+      payments,
+      paidCents: payments.reduce((sum, p) => sum + p.amountCents, 0),
     };
   });
 
@@ -286,6 +314,7 @@ export async function POST(request: Request, context: Context) {
           p_tab: input.tabId,
           p_method: input.method,
           p_user: user,
+          p_amount: input.amountCents ?? null,
         });
         break;
       case "cancelTab":
