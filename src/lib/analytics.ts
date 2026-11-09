@@ -21,7 +21,18 @@ export type SaleLineRow = {
   cantidad: number;
   importe: number;
   apartado: boolean;
+  /** De dónde vino la venta. */
+  origen: SaleOrigin;
 };
+
+export type SaleOrigin = "mostrador" | "apartado" | "mesa";
+
+function origin(
+  reservationId: string | null | undefined,
+  tableTabId: string | null | undefined,
+): SaleOrigin {
+  return tableTabId ? "mesa" : reservationId ? "apartado" : "mostrador";
+}
 
 // Información del inventario.
 export type StockRow = {
@@ -60,6 +71,7 @@ export type HistoricalSaleRow = {
   total_cents: number;
   created_at: string;
   reservation_id?: string | null;
+  table_tab_id?: string | null;
   sale_items: {
     dish_id: string;
     qty: number;
@@ -244,6 +256,11 @@ export function cashUpTables(
         apartado: Boolean(
           sale.reservationId,
         ),
+
+        origen: origin(
+          sale.reservationId,
+          sale.tableTabId,
+        ),
       })),
     );
 
@@ -377,6 +394,11 @@ export function historicalCashUpTables({
 
           apartado: Boolean(
             sale.reservation_id,
+          ),
+
+          origen: origin(
+            sale.reservation_id,
+            sale.table_tab_id,
           ),
         };
       }),

@@ -52,7 +52,7 @@ Sin claves corre con datos en memoria y un puesto de ejemplo, y el panel queda a
 
 ## Base de datos
 
-Migraciones en `supabase/migrations`, en orden (0001 a 0018). Para un proyecto nuevo de Supabase basta con correrlas en el SQL Editor; `0002` crea el puesto de ejemplo Birria Doña Lupe.
+Migraciones en `supabase/migrations`, en orden (0001 a 0019). Para un proyecto nuevo de Supabase basta con correrlas en el SQL Editor; `0002` crea el puesto de ejemplo Birria Doña Lupe.
 
 ## Scripts
 

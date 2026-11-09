@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { admin } from "@/lib/accounts";
-import { currentAccount } from "@/lib/auth/server";
+import { tableAccess } from "@/lib/table-access";
 
 // ==========================================
 // TODAVÍA HAY
@@ -53,66 +53,32 @@ function fail(message: string, status: number) {
 // ==========================================
 
 async function authorize(slug: string) {
-  const me = await currentAccount();
+  const access = await tableAccess(slug);
+  return access.ok
+    ? { ok: true as const, businessId: access.businessId }
+    : { ok: false as const, message: access.message, status: access.status };
+}
 
-  if (!me) {
-    return {
-      ok: false as const,
-      message: "Debes iniciar sesión.",
-      status: 401,
-    };
-  }
-
+/** Mesas que tienen una cuenta abierta (directa o por su grupo). */
+async function busyTableIds(businessId: string): Promise<Set<string>> {
   const db = admin();
+  const { data: tabs, error } = await db
+    .from("table_tabs")
+    .select("table_id")
+    .eq("business_id", businessId)
+    .eq("status", "open");
+  if (error) throw error;
+  const busy = new Set((tabs ?? []).map((t) => t.table_id as string));
+  if (busy.size === 0) return busy;
 
-  const { data: business, error: businessError } =
-    await db
-      .from("businesses")
-      .select("id, plan")
-      .eq("slug", slug)
-      .maybeSingle();
-
-  if (businessError) throw businessError;
-
-  if (!business) {
-    return {
-      ok: false as const,
-      message: "Restaurante no encontrado.",
-      status: 404,
-    };
+  const tables = await listTables(businessId);
+  const busyGroups = new Set(
+    tables.filter((t) => busy.has(t.id) && t.group_id).map((t) => t.group_id),
+  );
+  for (const t of tables) {
+    if (t.group_id && busyGroups.has(t.group_id)) busy.add(t.id);
   }
-
-  const { data: membership, error: memberError } =
-    await db
-      .from("business_members")
-      .select("role")
-      .eq("business_id", business.id)
-      .eq("user_id", me.id)
-      .in("role", ["waiter", "manager"])
-      .maybeSingle();
-
-  if (memberError) throw memberError;
-
-  if (!membership) {
-    return {
-      ok: false as const,
-      message: "No tienes permiso para gestionar mesas.",
-      status: 403,
-    };
-  }
-
-  if (business.plan !== "medium") {
-    return {
-      ok: false as const,
-      message: "Esta función requiere el plan Medium.",
-      status: 403,
-    };
-  }
-
-  return {
-    ok: true as const,
-    businessId: business.id as string,
-  };
+  return busy;
 }
 
 // ==========================================
@@ -206,6 +172,14 @@ export async function POST(
         );
       }
 
+      const busy = await busyTableIds(access.businessId);
+      if (input.tableIds.some((id) => busy.has(id))) {
+        return fail(
+          "Una de las mesas tiene una cuenta abierta. Cóbrala o cancélala antes de juntarla.",
+          409,
+        );
+      }
+
       // La función SQL realiza la agrupación
       // de forma atómica.
       const { error } = await db.rpc(
@@ -234,6 +208,15 @@ export async function POST(
     }
 
     if (input.action === "separate") {
+      const tables = await listTables(access.businessId);
+      const busy = await busyTableIds(access.businessId);
+      if (tables.some((t) => t.group_id === input.groupId && busy.has(t.id))) {
+        return fail(
+          "Estas mesas tienen una cuenta abierta. Cóbrala o cancélala antes de separarlas.",
+          409,
+        );
+      }
+
       const { error } = await db.rpc(
         "manage_table_group",
         {

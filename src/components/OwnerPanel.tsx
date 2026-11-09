@@ -348,6 +348,13 @@ export function OwnerPanel({
             </Link>
 
             <Link
+              href={`/${lang}/empleado/mesas/${view.slug}`}
+              className="inline-flex items-center gap-2 rounded-xl border border-[#eaded3] bg-white px-4 py-3 text-sm font-semibold text-[#4b3024] shadow-sm transition hover:border-brand hover:text-brand"
+            >
+              {lang === "es" ? "Mesas" : "Tables"}
+            </Link>
+
+            <Link
               href={`/${lang}/panel/${view.slug}/menu`}
               className="inline-flex items-center gap-2 rounded-xl border border-[#eaded3] bg-white px-4 py-3 text-sm font-semibold text-[#4b3024] shadow-sm transition hover:border-brand hover:text-brand"
             >

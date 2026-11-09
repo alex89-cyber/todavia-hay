@@ -1,518 +1,756 @@
-
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+import type { OpenTab, TabsSnapshot } from "@/app/api/businesses/[slug]/table-tabs/route";
 
 // ==========================================
 // TODAVÍA HAY
-// MESAS DEL MESERO
+// MESAS: ABRIR, PEDIR Y COBRAR
 // ==========================================
 //
-// El mesero puede:
-// - Ver mesas.
-// - Seleccionar mesas.
-// - Juntar mesas.
-// - Separar grupos.
+// - Ver qué mesas están libres u ocupadas.
+// - Abrir una mesa (cuántas personas).
+// - Tomar el pedido desde el menú.
+// - Cancelar un platillo o la cuenta.
+// - Cobrar con efectivo, tarjeta o transferencia.
+// - Juntar y separar mesas libres.
 //
-// El mesero NO puede:
-// - Crear mesas.
-// - Editar mesas.
-// - Activar o desactivar mesas.
-//
+// Crear o editar mesas sigue siendo del
+// dueño, desde Configuración.
 // ==========================================
-
-type RestaurantTable = {
-  id: string;
-  name: string;
-  capacity: number;
-  active: boolean;
-  group_id: string | null;
-};
 
 type Props = {
   slug: string;
   lang: "es" | "en";
 };
 
-export default function StaffTablesManager({
-  slug,
-  lang,
-}: Props) {
+type Method = "cash" | "card" | "transfer";
+
+type Place = {
+  key: string;
+  /** Mesa a la que se abre la cuenta. */
+  tableId: string;
+  label: string;
+  capacity: number;
+  active: boolean;
+  groupId: string | null;
+  tab: OpenTab | null;
+};
+
+const TEXT = {
+  es: {
+    free: "Libre",
+    busy: "Ocupada",
+    inactive: "Desactivada",
+    people: (n: number) => `${n} ${n === 1 ? "persona" : "personas"}`,
+    seats: (n: number) => `Para ${n}`,
+    open: "Abrir mesa",
+    howMany: "¿Cuántas personas?",
+    cancel: "Cancelar",
+    back: "← Mesas",
+    order: "Agregar al pedido",
+    send: (n: number) => `Enviar ${n} ${n === 1 ? "platillo" : "platillos"}`,
+    noteFor: "Nota (opcional)",
+    notePh: "Ej. sin cebolla",
+    left: (n: number) => `quedan ${n}`,
+    soldOut: "Agotado",
+    items: "Cuenta",
+    empty: "Todavía no hay platillos en esta cuenta.",
+    remove: "Quitar",
+    removeAsk: "¿Quitar este platillo? El inventario se regresa.",
+    total: "Total",
+    charge: (t: string) => `Cobrar ${t}`,
+    howPay: "¿Cómo pagó?",
+    cash: "Efectivo",
+    card: "Tarjeta",
+    transfer: "Transferencia",
+    paid: "Cuenta cobrada. La mesa quedó libre.",
+    cancelTab: "Cancelar cuenta",
+    cancelTabAsk: "¿Cancelar toda la cuenta? Se regresa el inventario y la mesa queda libre.",
+    cancelled: "Cuenta cancelada.",
+    sent: "Pedido agregado.",
+    closedDay: "El negocio está cerrado. Abre el día en el panel para tomar pedidos.",
+    join: "Juntar mesas",
+    joinPick: "Elige las mesas libres que quieres juntar.",
+    joinDo: (n: number) => `Juntar ${n}`,
+    separate: "Separar",
+    joined: "Mesas juntas.",
+    separated: "Mesas separadas.",
+    refresh: "Actualizar",
+    loading: "Cargando mesas…",
+    noTables: "Todavía no hay mesas. El dueño las agrega en Configuración.",
+    since: (m: number) => (m < 1 ? "recién abierta" : `hace ${m} min`),
+    summary: (free: number, busy: number) => `${free} libres · ${busy} ocupadas`,
+    error: "No se pudo completar. Intenta otra vez.",
+  },
+  en: {
+    free: "Free",
+    busy: "Busy",
+    inactive: "Disabled",
+    people: (n: number) => `${n} ${n === 1 ? "guest" : "guests"}`,
+    seats: (n: number) => `Seats ${n}`,
+    open: "Open table",
+    howMany: "How many guests?",
+    cancel: "Cancel",
+    back: "← Tables",
+    order: "Add to order",
+    send: (n: number) => `Send ${n} ${n === 1 ? "dish" : "dishes"}`,
+    noteFor: "Note (optional)",
+    notePh: "e.g. no onion",
+    left: (n: number) => `${n} left`,
+    soldOut: "Sold out",
+    items: "Bill",
+    empty: "No dishes on this bill yet.",
+    remove: "Remove",
+    removeAsk: "Remove this dish? Its stock goes back.",
+    total: "Total",
+    charge: (t: string) => `Charge ${t}`,
+    howPay: "How did they pay?",
+    cash: "Cash",
+    card: "Card",
+    transfer: "Transfer",
+    paid: "Bill paid. The table is free.",
+    cancelTab: "Cancel bill",
+    cancelTabAsk: "Cancel the whole bill? Stock goes back and the table is freed.",
+    cancelled: "Bill cancelled.",
+    sent: "Order added.",
+    closedDay: "The business is closed. Open the day in the panel to take orders.",
+    join: "Join tables",
+    joinPick: "Pick the free tables you want to join.",
+    joinDo: (n: number) => `Join ${n}`,
+    separate: "Separate",
+    joined: "Tables joined.",
+    separated: "Tables separated.",
+    refresh: "Refresh",
+    loading: "Loading tables…",
+    noTables: "No tables yet. The owner adds them in Settings.",
+    since: (m: number) => (m < 1 ? "just opened" : `${m} min ago`),
+    summary: (free: number, busy: number) => `${free} free · ${busy} busy`,
+    error: "Couldn't finish that. Try again.",
+  },
+};
+
+export default function StaffTablesManager({ slug, lang }: Props) {
+  const t = TEXT[lang];
   const es = lang === "es";
+  const base = `/api/businesses/${encodeURIComponent(slug)}`;
 
-  const [tables, setTables] =
-    useState<RestaurantTable[]>([]);
-
-  const [selected, setSelected] =
-    useState<string[]>([]);
-
+  const [data, setData] = useState<TabsSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
-  const endpoint =
-    `/api/businesses/${encodeURIComponent(slug)}/staff-tables`;
+  // Pantallas
+  const [opening, setOpening] = useState<Place | null>(null);
+  const [party, setParty] = useState(2);
+  const [tabId, setTabId] = useState<string | null>(null);
+  const [joining, setJoining] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
 
-  // ========================================
-  // CARGAR MESAS
-  // ========================================
+  // Pedido en preparación (antes de enviarlo)
+  const [cart, setCart] = useState<Record<string, number>>({});
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [paying, setPaying] = useState(false);
+
+  const money = useMemo(
+    () =>
+      new Intl.NumberFormat(es ? "es-MX" : "en-US", {
+        style: "currency",
+        currency: data?.currency ?? "MXN",
+      }),
+    [es, data?.currency],
+  );
+  const fmt = (cents: number) => money.format(cents / 100);
 
   const load = useCallback(async () => {
-    setLoading(true);
-
     try {
-      const response = await fetch(
-        `/api/businesses/${encodeURIComponent(slug)}/staff-tables`,
-        {
-          cache: "no-store",
-          credentials: "same-origin",
-        },
-      );
-
+      const response = await fetch(`${base}/table-tabs`, {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
       const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          result.error ??
-          "No se pudieron consultar las mesas.",
-        );
-      }
-
-      setTables(result.tables ?? []);
+      if (!response.ok) throw new Error(result.error ?? t.error);
+      setData(result as TabsSnapshot);
       setError("");
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Error al consultar mesas.",
-      );
+      setError(err instanceof Error ? err.message : t.error);
     } finally {
       setLoading(false);
     }
-  }, [slug]);
+  }, [base, t.error]);
 
+  // Carga inicial y cada 20 s (otros meseros también mueven las mesas).
   useEffect(() => {
-    void load();
+    const first = setTimeout(() => void load(), 0);
+    const timer = setInterval(() => void load(), 20_000);
+    const onFocus = () => void load();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearTimeout(first);
+      clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+    };
   }, [load]);
 
-  // ========================================
-  // JUNTAR O SEPARAR MESAS
-  // ========================================
-
-  async function action(
+  async function send(
+    endpoint: string,
     body: Record<string, unknown>,
-    successMessage: string,
-  ) {
+    ok: string,
+  ): Promise<TabsSnapshot | null> {
     setBusy(true);
     setError("");
     setNotice("");
-
     try {
       const response = await fetch(endpoint, {
         method: "POST",
         credentials: "same-origin",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-
       const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          result.error ??
-          "No se pudo realizar la operación.",
-        );
-      }
-
-      setTables(result.tables ?? []);
-      setSelected([]);
-      setNotice(successMessage);
+      if (!response.ok) throw new Error(result.error ?? t.error);
+      if (ok) setNotice(ok);
+      return result as TabsSnapshot;
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "No se pudo guardar el cambio.",
-      );
-
-      // Actualizar para ver si otro mesero
-      // realizó cambios simultáneamente.
+      setError(err instanceof Error ? err.message : t.error);
       await load();
+      return null;
     } finally {
       setBusy(false);
     }
   }
 
-  // ========================================
-  // SELECCIONAR MESAS
-  // ========================================
+  const act = async (body: Record<string, unknown>, ok: string) => {
+    const next = await send(`${base}/table-tabs`, body, ok);
+    if (next) setData(next);
+    return next;
+  };
 
-  function toggleSelection(id: string) {
-    setSelected((current) =>
-      current.includes(id)
-        ? current.filter((item) => item !== id)
-        : [...current, id],
-    );
-  }
+  // ----------------------------------------
+  // Mesas y grupos como "lugares"
+  // ----------------------------------------
 
-  // ========================================
-  // MESAS INDIVIDUALES
-  // ========================================
+  const places = useMemo<Place[]>(() => {
+    if (!data) return [];
+    const tabFor = (ids: string[]) => data.tabs.find((tab) => ids.includes(tab.tableId)) ?? null;
+    const groups = new Map<string, TabsSnapshot["tables"]>();
+    const out: Place[] = [];
 
-  const standalone = useMemo(
-    () => tables.filter((table) => !table.group_id),
-    [tables],
-  );
-
-  // ========================================
-  // MESAS AGRUPADAS
-  // ========================================
-
-  const groups = useMemo(() => {
-    const map = new Map<string, RestaurantTable[]>();
-
-    for (const table of tables) {
-      if (!table.group_id) continue;
-
-      const previous = map.get(table.group_id) ?? [];
-
-      map.set(table.group_id, [
-        ...previous,
-        table,
-      ]);
+    for (const table of data.tables) {
+      if (table.group_id) {
+        groups.set(table.group_id, [...(groups.get(table.group_id) ?? []), table]);
+        continue;
+      }
+      out.push({
+        key: table.id,
+        tableId: table.id,
+        label: table.name,
+        capacity: table.capacity,
+        active: table.active,
+        groupId: null,
+        tab: tabFor([table.id]),
+      });
     }
 
-    return [...map.entries()].map(
-      ([id, members]) => ({
-        id,
-        members,
-        capacity: members.reduce(
-          (sum, table) => sum + table.capacity,
-          0,
-        ),
-      }),
-    );
-  }, [tables]);
+    for (const [groupId, members] of groups) {
+      const sorted = [...members].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+      out.push({
+        key: groupId,
+        tableId: sorted[0].id,
+        label: sorted.map((m) => m.name).join(" + "),
+        capacity: sorted.reduce((sum, m) => sum + m.capacity, 0),
+        active: sorted.every((m) => m.active),
+        groupId,
+        tab: tabFor(sorted.map((m) => m.id)),
+      });
+    }
 
-  const activeCount = tables.filter(
-    (table) => table.active,
-  ).length;
+    return out.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
+  }, [data]);
 
-  // ========================================
-  // JUNTAR MESAS
-  // ========================================
+  const tab = data?.tabs.find((x) => x.id === tabId) ?? null;
+  const dishName = (id: string) => {
+    const d = data?.menu.find((m) => m.id === id);
+    return d ? (es ? d.nameEs : d.nameEn) : "—";
+  };
+  const cartCount = Object.values(cart).reduce((a, b) => a + b, 0);
+  const freeCount = places.filter((p) => p.active && !p.tab).length;
+  const busyCount = places.filter((p) => p.tab).length;
+
+  function resetOrder() {
+    setCart({});
+    setNotes({});
+    setPaying(false);
+  }
+
+  // ----------------------------------------
+  // Acciones
+  // ----------------------------------------
+
+  async function openTable() {
+    if (!opening) return;
+    const next = await act({ action: "open", tableId: opening.tableId, partySize: party }, "");
+    if (next) {
+      const created = next.tabs.find((x) => x.tableId === opening.tableId);
+      setOpening(null);
+      resetOrder();
+      if (created) setTabId(created.id);
+    }
+  }
+
+  async function sendOrder() {
+    if (!tab || cartCount === 0) return;
+    const lines = Object.entries(cart)
+      .filter(([, qty]) => qty > 0)
+      .map(([dishId, qty]) => ({ dishId, qty, note: notes[dishId]?.trim() || undefined }));
+    const next = await act({ action: "add", tabId: tab.id, lines }, t.sent);
+    if (next) resetOrder();
+  }
+
+  async function removeItem(itemId: string) {
+    if (!window.confirm(t.removeAsk)) return;
+    await act({ action: "cancelItem", itemId }, "");
+  }
+
+  async function pay(method: Method) {
+    if (!tab) return;
+    const next = await act({ action: "pay", tabId: tab.id, method }, t.paid);
+    if (next) {
+      setTabId(null);
+      resetOrder();
+    }
+  }
+
+  async function cancelTab() {
+    if (!tab || !window.confirm(t.cancelTabAsk)) return;
+    const next = await act({ action: "cancelTab", tabId: tab.id }, t.cancelled);
+    if (next) {
+      setTabId(null);
+      resetOrder();
+    }
+  }
 
   async function joinTables() {
-    if (selected.length < 2) {
-      setError(
-        es
-          ? "Selecciona al menos dos mesas."
-          : "Select at least two tables.",
-      );
-      return;
+    const next = await send(`${base}/staff-tables`, { action: "join", tableIds: picked }, t.joined);
+    if (next) {
+      setJoining(false);
+      setPicked([]);
+      await load();
     }
-
-    await action(
-      {
-        action: "join",
-        tableIds: selected,
-      },
-      es
-        ? "Mesas agrupadas correctamente."
-        : "Tables joined successfully.",
-    );
   }
 
-  // ========================================
-  // SEPARAR MESAS
-  // ========================================
-
-  async function separateTables(groupId: string) {
-    await action(
-      {
-        action: "separate",
-        groupId,
-      },
-      es
-        ? "Mesas separadas correctamente."
-        : "Tables separated successfully.",
-    );
+  async function separate(groupId: string) {
+    const next = await send(`${base}/staff-tables`, { action: "separate", groupId }, t.separated);
+    if (next) await load();
   }
 
-  // ========================================
-  // INTERFAZ PRINCIPAL
-  // ========================================
-
-  return (
-    <div className="mt-8 space-y-6">
-
-      {/* RESUMEN */}
-
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-
-        <div className="rounded-2xl border border-[#eaded3] bg-white p-4">
-          <p className="text-xs text-gray-500">
-            {es
-              ? "Mesas habilitadas"
-              : "Enabled tables"}
-          </p>
-
-          <p className="mt-2 text-3xl font-black text-[#a3341f]">
-            {activeCount}
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-[#eaded3] bg-white p-4">
-          <p className="text-xs text-gray-500">
-            {es
-              ? "Grupos de mesas"
-              : "Table groups"}
-          </p>
-
-          <p className="mt-2 text-3xl font-black text-[#a3341f]">
-            {groups.length}
-          </p>
-        </div>
-
-        <div className="col-span-2 rounded-2xl border border-[#eaded3] bg-white p-4 sm:col-span-1">
-          <p className="text-xs text-gray-500">
-            {es
-              ? "Mesas seleccionadas"
-              : "Selected tables"}
-          </p>
-
-          <p className="mt-2 text-3xl font-black text-[#a3341f]">
-            {selected.length}
-          </p>
-        </div>
-      </div>
-
-      {/* ACCIONES DEL MESERO */}
-
-      <div className="flex flex-wrap gap-3">
-        <button
-          type="button"
-          onClick={() => void joinTables()}
-          disabled={busy || selected.length < 2}
-          className="rounded-xl bg-[#a3341f] px-5 py-3 text-sm font-bold text-white disabled:opacity-40"
-        >
-          {es
-            ? "Juntar seleccionadas"
-            : "Join selected"}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => void load()}
-          disabled={busy || loading}
-          className="rounded-xl border border-[#eaded3] bg-white px-5 py-3 text-sm font-bold disabled:opacity-50"
-        >
-          {es ? "Actualizar" : "Refresh"}
-        </button>
-      </div>
-
-      {/* MENSAJES */}
-
+  const messages = (
+    <>
       {error && (
-        <p
-          role="alert"
-          className="rounded-xl bg-red-50 p-4 text-sm font-semibold text-red-700"
-        >
+        <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm font-semibold text-red-700">
           {error}
         </p>
       )}
-
       {notice && (
-        <p
-          role="status"
-          className="rounded-xl bg-green-50 p-4 text-sm font-semibold text-green-800"
-        >
+        <p role="status" className="rounded-xl bg-green-50 p-4 text-sm font-semibold text-green-800">
           {notice}
         </p>
       )}
+    </>
+  );
 
-      {/* GRUPOS DE MESAS */}
+  // ========================================
+  // CUENTA DE UNA MESA
+  // ========================================
 
-      {groups.length > 0 && (
-        <section>
-          <h2 className="text-xl font-black text-[#302018]">
-            {es
-              ? "Mesas agrupadas"
-              : "Joined tables"}
-          </h2>
+  if (tab) {
+    return (
+      <div className="mt-6 space-y-5">
+        <div className="flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setTabId(null);
+              resetOrder();
+            }}
+            className="text-sm font-bold text-[#a3341f]"
+          >
+            {t.back}
+          </button>
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={busy}
+            className="rounded-xl border border-[#eaded3] bg-white px-3 py-2 text-xs font-bold disabled:opacity-50"
+          >
+            {t.refresh}
+          </button>
+        </div>
 
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            {groups.map((group) => (
-              <article
-                key={group.id}
-                className="rounded-2xl border-2 border-[#a3341f] bg-white p-5"
+        <header className="rounded-2xl border-2 border-[#a3341f] bg-white p-5">
+          <p className="text-xs font-bold uppercase tracking-widest text-[#a3341f]">{t.busy}</p>
+          <h2 className="mt-1 text-2xl font-black text-[#302018]">{tab.tableLabel}</h2>
+          <p className="mt-1 text-sm text-gray-600">
+            {t.people(tab.partySize)} · {t.since(minutesSince(tab.openedAt))}
+          </p>
+        </header>
+
+        {messages}
+        {data && !data.isOpen && (
+          <p className="rounded-xl bg-amber-50 p-4 text-sm font-semibold text-amber-900">{t.closedDay}</p>
+        )}
+
+        <div className="grid gap-5 lg:grid-cols-[1fr_22rem] lg:items-start">
+          {/* MENÚ */}
+          <section className="rounded-2xl border border-[#eaded3] bg-white p-4">
+            <h3 className="text-lg font-black text-[#302018]">{t.order}</h3>
+            <ul className="mt-3 divide-y divide-[#f1e7dd]">
+              {(data?.menu ?? []).map((dish) => {
+                const qty = cart[dish.id] ?? 0;
+                const out = dish.soldOut || dish.portions <= 0;
+                const max = Math.min(99, dish.portions);
+                return (
+                  <li key={dish.id} className="py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className={`font-bold ${out ? "text-gray-400" : "text-[#302018]"}`}>
+                          {es ? dish.nameEs : dish.nameEn}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {fmt(dish.priceCents)} · {out ? t.soldOut : t.left(dish.portions)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          aria-label={`- ${es ? dish.nameEs : dish.nameEn}`}
+                          disabled={qty === 0 || busy}
+                          onClick={() => setCart((c) => ({ ...c, [dish.id]: Math.max(0, qty - 1) }))}
+                          className="size-10 rounded-full border border-[#eaded3] text-lg font-bold disabled:opacity-30"
+                        >
+                          −
+                        </button>
+                        <span className="w-6 text-center font-black tabular-nums">{qty}</span>
+                        <button
+                          type="button"
+                          aria-label={`+ ${es ? dish.nameEs : dish.nameEn}`}
+                          disabled={out || qty >= max || busy || !data?.isOpen}
+                          onClick={() => setCart((c) => ({ ...c, [dish.id]: qty + 1 }))}
+                          className="size-10 rounded-full bg-[#a3341f] text-lg font-bold text-white disabled:opacity-30"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                    {qty > 0 && (
+                      <input
+                        type="text"
+                        maxLength={140}
+                        value={notes[dish.id] ?? ""}
+                        onChange={(e) => setNotes((n) => ({ ...n, [dish.id]: e.target.value }))}
+                        placeholder={t.notePh}
+                        aria-label={t.noteFor}
+                        className="mt-2 w-full rounded-lg border border-[#eaded3] px-3 py-2 text-sm"
+                      />
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+            <button
+              type="button"
+              onClick={() => void sendOrder()}
+              disabled={busy || cartCount === 0}
+              className="sticky bottom-3 mt-3 w-full rounded-xl bg-[#a3341f] px-5 py-4 text-base font-black text-white shadow-lg disabled:opacity-40"
+            >
+              {t.send(cartCount)}
+            </button>
+          </section>
+
+          {/* CUENTA */}
+          <section className="rounded-2xl border border-[#eaded3] bg-white p-4">
+            <h3 className="text-lg font-black text-[#302018]">{t.items}</h3>
+            {tab.items.length === 0 ? (
+              <p className="mt-3 text-sm text-gray-500">{t.empty}</p>
+            ) : (
+              <ul className="mt-3 divide-y divide-[#f1e7dd]">
+                {tab.items.map((item) => (
+                  <li key={item.id} className="flex items-start gap-3 py-2 text-sm">
+                    <span className="w-6 font-black tabular-nums">{item.qty}×</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold">{dishName(item.dishId)}</p>
+                      {item.note && <p className="text-xs text-gray-500">“{item.note}”</p>}
+                    </div>
+                    <span className="tabular-nums">{fmt(item.qty * item.priceCents)}</span>
+                    <button
+                      type="button"
+                      onClick={() => void removeItem(item.id)}
+                      disabled={busy}
+                      aria-label={`${t.remove} ${dishName(item.dishId)}`}
+                      className="rounded-full px-2 text-gray-400 hover:text-red-700 disabled:opacity-30"
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="mt-4 flex items-baseline justify-between border-t border-[#eaded3] pt-3">
+              <span className="text-sm font-bold text-gray-600">{t.total}</span>
+              <span className="text-2xl font-black tabular-nums text-[#302018]">{fmt(tab.totalCents)}</span>
+            </div>
+
+            {!paying ? (
+              <button
+                type="button"
+                onClick={() => setPaying(true)}
+                disabled={busy || tab.items.length === 0}
+                className="mt-4 w-full rounded-xl bg-[#244D38] px-5 py-4 text-base font-black text-white disabled:opacity-40"
               >
-                <p className="text-xs font-bold uppercase text-[#a3341f]">
-                  {es
-                    ? "Grupo de mesas"
-                    : "Table group"}
-                </p>
-
-                <h3 className="mt-2 text-lg font-black">
-                  {group.members
-                    .map((table) => table.name)
-                    .join(" + ")}
-                </h3>
-
-                <p className="mt-2 text-sm text-gray-600">
-                  {es
-                    ? "Capacidad combinada"
-                    : "Combined capacity"}
-                  :{" "}
-                  <strong>
-                    {group.capacity}{" "}
-                    {es ? "personas" : "guests"}
-                  </strong>
-                </p>
-
+                {t.charge(fmt(tab.totalCents))}
+              </button>
+            ) : (
+              <div className="mt-4 rounded-xl bg-[#EDF4E9] p-3">
+                <p className="text-sm font-bold text-[#244D38]">{t.howPay}</p>
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  {(["cash", "card", "transfer"] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => void pay(m)}
+                      disabled={busy}
+                      className="rounded-lg bg-[#244D38] px-2 py-3 text-sm font-bold text-white disabled:opacity-40"
+                    >
+                      {t[m]}
+                    </button>
+                  ))}
+                </div>
                 <button
                   type="button"
-                  disabled={busy}
-                  onClick={() =>
-                    void separateTables(group.id)
-                  }
-                  className="mt-4 rounded-xl border border-[#a3341f] px-4 py-3 text-sm font-bold text-[#a3341f] disabled:opacity-50"
+                  onClick={() => setPaying(false)}
+                  className="mt-2 w-full text-xs font-bold text-gray-600"
                 >
-                  {es
-                    ? "Separar mesas"
-                    : "Separate tables"}
+                  {t.cancel}
                 </button>
-              </article>
-            ))}
-          </div>
-        </section>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => void cancelTab()}
+              disabled={busy}
+              className="mt-4 w-full text-xs font-bold text-red-700 disabled:opacity-40"
+            >
+              {t.cancelTab}
+            </button>
+          </section>
+        </div>
+      </div>
+    );
+  }
+
+  // ========================================
+  // TODAS LAS MESAS
+  // ========================================
+
+  return (
+    <div className="mt-6 space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm font-semibold text-gray-600">{data ? t.summary(freeCount, busyCount) : ""}</p>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setJoining((j) => !j);
+              setPicked([]);
+            }}
+            disabled={busy}
+            className={`rounded-xl px-4 py-2 text-sm font-bold disabled:opacity-50 ${
+              joining ? "bg-[#302018] text-white" : "border border-[#eaded3] bg-white"
+            }`}
+          >
+            {joining ? t.cancel : t.join}
+          </button>
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={busy}
+            className="rounded-xl border border-[#eaded3] bg-white px-4 py-2 text-sm font-bold disabled:opacity-50"
+          >
+            {t.refresh}
+          </button>
+        </div>
+      </div>
+
+      {messages}
+      {data && !data.isOpen && (
+        <p className="rounded-xl bg-amber-50 p-4 text-sm font-semibold text-amber-900">{t.closedDay}</p>
       )}
 
-      {/* MESAS INDIVIDUALES */}
+      {joining && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#fff7ef] p-3">
+          <p className="text-sm font-semibold text-[#806b5d]">{t.joinPick}</p>
+          <button
+            type="button"
+            onClick={() => void joinTables()}
+            disabled={busy || picked.length < 2}
+            className="rounded-xl bg-[#a3341f] px-4 py-2 text-sm font-bold text-white disabled:opacity-40"
+          >
+            {t.joinDo(picked.length)}
+          </button>
+        </div>
+      )}
 
-      <section>
-        <h2 className="text-xl font-black text-[#302018]">
-          {es
-            ? "Mesas del restaurante"
-            : "Restaurant tables"}
-        </h2>
-
-        <p className="mt-2 text-sm text-gray-600">
-          {es
-            ? "Selecciona dos o más mesas para juntarlas. La configuración de mesas corresponde al propietario."
-            : "Select two or more tables to join them. Table configuration belongs to the owner."}
+      {loading && !data ? (
+        <p className="text-sm text-gray-600">{t.loading}</p>
+      ) : places.length === 0 ? (
+        <p className="rounded-2xl border border-dashed border-[#eaded3] bg-white p-6 text-center text-sm text-gray-600">
+          {t.noTables}
         </p>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          {places.map((place) => {
+            const isPicked = picked.includes(place.tableId);
+            const canPick = joining && !place.tab && place.active && !place.groupId;
+            const state = !place.active ? t.inactive : place.tab ? t.busy : t.free;
 
-        {loading && tables.length === 0 ? (
-          <p className="mt-5 text-sm text-gray-600">
-            {es
-              ? "Cargando mesas..."
-              : "Loading tables..."}
-          </p>
-        ) : standalone.length === 0 ? (
-          <div className="mt-5 rounded-2xl border border-dashed border-[#eaded3] bg-white p-6 text-center">
-            <p className="font-bold">
-              {es
-                ? "No hay mesas individuales habilitadas."
-                : "No individual tables available."}
-            </p>
+            const onTap = () => {
+              if (joining) {
+                if (canPick)
+                  setPicked((p) => (isPicked ? p.filter((x) => x !== place.tableId) : [...p, place.tableId]));
+                return;
+              }
+              if (!place.active) return;
+              setError("");
+              setNotice("");
+              if (place.tab) {
+                resetOrder();
+                setTabId(place.tab.id);
+              } else {
+                setParty(Math.min(place.capacity, 50) || 2);
+                setOpening(place);
+              }
+            };
 
-            <p className="mt-2 text-sm text-gray-600">
-              {es
-                ? "El propietario puede agregar mesas desde Configuración."
-                : "The owner can add tables from Settings."}
-            </p>
-          </div>
-        ) : (
-          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-
-            {standalone.map((table) => (
-              <article
-                key={table.id}
-                className={`rounded-2xl border bg-white p-5 ${
-                  selected.includes(table.id)
-                    ? "border-2 border-[#a3341f]"
-                    : "border-[#eaded3]"
-                }`}
+            return (
+              <div
+                key={place.key}
+                className={`flex flex-col rounded-2xl border-2 bg-white p-4 text-left ${
+                  isPicked
+                    ? "border-[#302018]"
+                    : place.tab
+                      ? "border-[#a3341f]"
+                      : "border-[#eaded3]"
+                } ${!place.active || (joining && !canPick) ? "opacity-50" : ""}`}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-2xl">
-                      🍽️
-                    </p>
-
-                    <h3 className="mt-2 text-lg font-black">
-                      {table.name}
-                    </h3>
-
-                    <p className="mt-1 text-sm text-gray-600">
-                      {table.capacity}{" "}
-                      {es ? "personas" : "guests"}
-                    </p>
-                  </div>
-
+                <button
+                  type="button"
+                  onClick={onTap}
+                  disabled={busy || !place.active || (joining && !canPick)}
+                  className="flex-1 text-left"
+                >
                   <span
-                    className={`rounded-full px-3 py-1 text-xs font-bold ${
-                      table.active
-                        ? "bg-green-100 text-green-800"
-                        : "bg-gray-100 text-gray-600"
+                    className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                      place.tab
+                        ? "bg-[#a3341f] text-white"
+                        : place.active
+                          ? "bg-green-100 text-green-800"
+                          : "bg-gray-100 text-gray-600"
                     }`}
                   >
-                    {table.active
-                      ? es ? "Habilitada" : "Enabled"
-                      : es ? "Inactiva" : "Disabled"}
+                    {joining && canPick ? (isPicked ? "✓" : "○") : state}
                   </span>
-                </div>
-
-                {/* ÚNICA ACCIÓN SOBRE UNA MESA */}
-
-                {table.active && (
-                  <label className="mt-5 flex cursor-pointer items-center gap-3 rounded-xl bg-[#fff7ef] p-3 text-sm font-semibold">
-                    <input
-                      type="checkbox"
-                      checked={selected.includes(table.id)}
-                      disabled={busy}
-                      onChange={() =>
-                        toggleSelection(table.id)
-                      }
-                      className="size-4 accent-[#a3341f]"
-                    />
-
-                    {es
-                      ? "Seleccionar para juntar"
-                      : "Select to join"}
-                  </label>
+                  <span className="mt-2 block text-lg font-black leading-tight text-[#302018]">{place.label}</span>
+                  {place.tab ? (
+                    <>
+                      <span className="mt-1 block text-xs text-gray-600">
+                        {t.people(place.tab.partySize)} · {t.since(minutesSince(place.tab.openedAt))}
+                      </span>
+                      <span className="mt-2 block text-xl font-black tabular-nums text-[#a3341f]">
+                        {fmt(place.tab.totalCents)}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="mt-1 block text-xs text-gray-600">{t.seats(place.capacity)}</span>
+                  )}
+                </button>
+                {place.groupId && !place.tab && !joining && (
+                  <button
+                    type="button"
+                    onClick={() => void separate(place.groupId!)}
+                    disabled={busy}
+                    className="mt-3 rounded-lg border border-[#a3341f] px-3 py-1.5 text-xs font-bold text-[#a3341f] disabled:opacity-40"
+                  >
+                    {t.separate}
+                  </button>
                 )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-                {!table.active && (
-                  <p className="mt-5 text-xs text-gray-500">
-                    {es
-                      ? "Mesa desactivada por el propietario."
-                      : "Table disabled by owner."}
-                  </p>
-                )}
-              </article>
-            ))}
+      {/* ABRIR MESA */}
+      {opening && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="open-table-title"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
+          onClick={() => setOpening(null)}
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
+            <p className="text-xs font-bold uppercase tracking-widest text-[#a3341f]">{t.open}</p>
+            <h2 id="open-table-title" className="mt-1 text-2xl font-black text-[#302018]">
+              {opening.label}
+            </h2>
+            <p className="mt-4 text-sm font-bold text-gray-700">{t.howMany}</p>
+            <div className="mt-2 flex items-center justify-center gap-5">
+              <button
+                type="button"
+                onClick={() => setParty((p) => Math.max(1, p - 1))}
+                className="size-12 rounded-full border border-[#eaded3] text-2xl font-bold"
+                aria-label="−"
+              >
+                −
+              </button>
+              <span className="w-12 text-center text-4xl font-black tabular-nums">{party}</span>
+              <button
+                type="button"
+                onClick={() => setParty((p) => Math.min(50, p + 1))}
+                className="size-12 rounded-full border border-[#eaded3] text-2xl font-bold"
+                aria-label="+"
+              >
+                +
+              </button>
+            </div>
+            <div className="mt-6 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setOpening(null)}
+                className="rounded-xl border border-[#eaded3] px-4 py-3 text-sm font-bold"
+              >
+                {t.cancel}
+              </button>
+              <button
+                type="button"
+                onClick={() => void openTable()}
+                disabled={busy}
+                className="rounded-xl bg-[#a3341f] px-4 py-3 text-sm font-black text-white disabled:opacity-40"
+              >
+                {t.open}
+              </button>
+            </div>
           </div>
-        )}
-      </section>
-
-      {/* AVISO SOBRE OCUPACIÓN */}
-
-      <div className="rounded-xl border border-[#eaded3] bg-[#fff7ef] p-4">
-        <p className="text-xs text-[#806b5d]">
-          {es
-            ? "Habilitada significa que la mesa está configurada para usarse, no necesariamente que esté libre. Cuando conectemos los pedidos, podrás abrir una mesa, tomar la orden y mantener la cuenta abierta hasta cobrar."
-            : "Enabled means the table is configured for use, not necessarily unoccupied. Once orders are connected, you will be able to open tables and manage unpaid tabs."}
-        </p>
-      </div>
+        </div>
+      )}
     </div>
   );
+}
+
+function minutesSince(iso: string) {
+  return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60_000));
 }

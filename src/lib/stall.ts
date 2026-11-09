@@ -36,6 +36,8 @@ export type Sale = {
   at: string;
   /** Pedido apartado del que viene la venta, si lo hay. */
   reservationId?: string | null;
+  /** Cuenta de mesa de la que viene la venta, si la hay. */
+  tableTabId?: string | null;
 };
 
 export type ReservationStatus =

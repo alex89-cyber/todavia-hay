@@ -447,7 +447,7 @@ async function load(
       await db()
         .from("sales")
         .select(
-          "id, method, total_cents, created_at, reservation_id, sale_items(dish_id, qty)",
+          "id, method, total_cents, created_at, reservation_id, table_tab_id, sale_items(dish_id, qty)",
         )
         .eq("day_id", day.id)
         .order("created_at"),
@@ -460,6 +460,7 @@ async function load(
       totalCents: sale.total_cents,
       at: new Date(sale.created_at).toISOString(),
       reservationId: sale.reservation_id,
+      tableTabId: sale.table_tab_id,
 
       lines: (
         sale.sale_items as {
