@@ -7,3 +7,23 @@ export function origin(request: Request): string {
   const proto = h.get("x-forwarded-proto")?.split(",")[0] ?? url.protocol.replace(":", "");
   return `${proto}://${host}`;
 }
+
+/**
+ * ¿La petición viene de nuestra propia página? En Render, request.url es
+ * http://localhost:10000, así que se compara contra el origen público
+ * (encabezados del proxy) y contra NEXT_PUBLIC_SITE_URL.
+ */
+export function sameOrigin(request: Request): boolean {
+  const incoming = request.headers.get("origin");
+  if (!incoming) return false;
+  const allowed = new Set([new URL(request.url).origin, origin(request)]);
+  for (const env of [process.env.NEXT_PUBLIC_SITE_URL, process.env.NEXT_PUBLIC_APP_URL]) {
+    if (!env) continue;
+    try {
+      allowed.add(new URL(env).origin);
+    } catch {
+      // URL mal escrita en el entorno: se ignora.
+    }
+  }
+  return allowed.has(incoming);
+}
