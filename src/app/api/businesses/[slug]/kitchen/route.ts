@@ -139,7 +139,11 @@ async function snapshot(
       tickets.push({
         key: `r:${r.id}`,
         kind: "pickup",
-        label: `${lang === "es" ? "Recoger" : "Pickup"}${r.orderNumber ? ` #${r.orderNumber}` : ""} · ${shortName(r.customerName)}`,
+        label: `${
+          r.dineIn ? (lang === "es" ? "Comer aquí" : "Dine in") : lang === "es" ? "Recoger" : "Pickup"
+        }${r.orderNumber ? ` #${r.orderNumber}` : ""} · ${shortName(r.customerName)}${
+          r.dineIn && r.partySize ? ` (${r.partySize})` : ""
+        }`,
         status: stage === "ready" ? "ready" : "pending",
         since: prepStartsAt(r, pickup).toISOString(),
         readyAt: r.readyAt,

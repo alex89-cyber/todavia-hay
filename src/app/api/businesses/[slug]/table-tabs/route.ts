@@ -6,7 +6,7 @@ import { z } from "zod";
 import { admin } from "@/lib/accounts";
 import { sameOrigin } from "@/lib/origin";
 import { menuAvailability } from "@/lib/inventory";
-import type { MenuSection } from "@/lib/stall";
+import { lastNameMatches, type MenuSection } from "@/lib/stall";
 import { store } from "@/lib/store";
 import { canServe, tableAccess } from "@/lib/table-access";
 
@@ -17,7 +17,9 @@ import { canServe, tableAccess } from "@/lib/table-access";
 //
 // GET  /api/businesses/:slug/table-tabs → mesas, cuentas abiertas y menú
 // POST /api/businesses/:slug/table-tabs
-//   { action: "open", tableId, partySize }
+//   { action: "open", tableId, partySize, reservation? }
+//     reservation = código de 4 dígitos o apellido de un
+//     apartado "comer aquí": la cuenta abre con sus platillos.
 //   { action: "add", tabId, lines: [{ dishId, qty, note? }] }
 //   { action: "cancelItem", itemId }
 //   { action: "pay", tabId, method, amountCents? }
@@ -35,6 +37,8 @@ const Body = z.discriminatedUnion("action", [
     action: z.literal("open"),
     tableId: z.string().uuid(),
     partySize: z.number().int().min(1).max(50),
+    /** Comer aquí: código de 4 dígitos o apellido del apartado. */
+    reservation: z.string().trim().min(2).max(60).optional(),
   }),
   z.object({
     action: z.literal("add"),
@@ -84,7 +88,30 @@ const KNOWN: Record<string, { message: string; status: number }> = {
   empty_tab: { message: "La cuenta no tiene platillos. Cancélala en lugar de cobrar.", status: 409 },
   ticket_not_found: { message: "La comanda ya no existe.", status: 404 },
   ticket_not_ready: { message: "Esa comanda todavía no está lista.", status: 409 },
+  reservation_not_found: { message: "Ese apartado ya no existe.", status: 404 },
+  reservation_not_active: { message: "Ese apartado ya se entregó, se canceló o venció.", status: 409 },
 };
+
+/** Busca el apartado "comer aquí" activo por código o apellido. */
+async function findDineIn(slug: string, proof: string) {
+  const state = await store.get(slug);
+  const active = (state?.reservations ?? []).filter((r) => r.status === "authorized" && r.dineIn);
+  const byCode = /^\d{4}$/.test(proof);
+  const found = active.filter((r) =>
+    byCode ? r.pickupCode === proof : lastNameMatches(r.customerName, proof),
+  );
+  if (found.length === 0) {
+    return {
+      error: byCode
+        ? "No hay un apartado para comer aquí con ese código."
+        : "No hay un apartado para comer aquí con ese apellido.",
+    };
+  }
+  if (found.length > 1) {
+    return { error: "Hay varios apartados con ese apellido. Pide el código de 4 dígitos." };
+  }
+  return { reservation: found[0] };
+}
 
 function fail(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
@@ -332,16 +359,36 @@ export async function POST(request: Request, context: Context) {
       if (!data) return fail(KNOWN.item_not_found.message, 404);
     }
 
+    // Comer aquí: primero se busca el apartado, antes de abrir la mesa.
+    const dineIn =
+      input.action === "open" && input.reservation
+        ? await findDineIn(slug, input.reservation)
+        : null;
+    if (dineIn?.error) return fail(dineIn.error, 404);
+
     let result: { error: { message: string } | null };
     switch (input.action) {
-      case "open":
-        result = await db.rpc("open_table_tab", {
+      case "open": {
+        const opened = await db.rpc("open_table_tab", {
           p_business: access.businessId,
           p_table: input.tableId,
           p_party: input.partySize,
           p_user: user,
         });
+        result = opened;
+        if (opened.error || !dineIn?.reservation) break;
+
+        result = await db.rpc("seat_reservation", {
+          p_tab: opened.data as string,
+          p_reservation: dineIn.reservation.id,
+          p_user: user,
+        });
+        // Si no se pudo pasar el apartado, la mesa no se queda abierta vacía.
+        if (result.error) {
+          await db.rpc("cancel_table_tab", { p_tab: opened.data as string, p_user: user });
+        }
         break;
+      }
       case "add":
         result = await db.rpc("add_table_tab_items", {
           p_tab: input.tabId,

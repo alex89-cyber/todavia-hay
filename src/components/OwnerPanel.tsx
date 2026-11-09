@@ -1495,6 +1495,8 @@ function Reservations({
       )
       .join(", ");
 
+  const es = lang === "es";
+
   const {
     stampsPerReward: per,
     rewardDishId,
@@ -1628,6 +1630,13 @@ function Reservations({
                 )}
                 {r.customerName}
               </p>
+
+              {r.dineIn && (
+                <p className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-900">
+                  🍽️ {es ? "Comer aquí" : "Dine in"}
+                  {r.partySize ? ` · ${r.partySize} ${es ? (r.partySize === 1 ? "persona" : "personas") : r.partySize === 1 ? "person" : "people"}` : ""}
+                </p>
+              )}
 
               <p className="mt-1 text-sm">
                 {items(r)}

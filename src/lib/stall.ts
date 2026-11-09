@@ -86,6 +86,13 @@ export type Reservation = {
 
   /** Cuenta del cliente que reservó. */
   customerId: string | null;
+
+  /** Comer aquí: aparta comida y lugar (sin mesa fija). */
+  dineIn?: boolean;
+  partySize?: number | null;
+
+  /** Cuenta de mesa a la que se pasó al llegar. */
+  tableTabId?: string | null;
 };
 
 // ==========================================
@@ -280,6 +287,12 @@ export type PickupSettings = {
 
   /** Tolerancia después de la hora programada. */
   toleranceMinutes: number;
+
+  /** Aceptar apartados para comer aquí (apagado por default). */
+  dineIn: boolean;
+
+  /** Comer aquí: cuánto se espera al cliente antes de marcar "No llegó". */
+  dineInToleranceMinutes: number;
 };
 
 export type StallOpeningHour = {

@@ -79,6 +79,8 @@ export type AgentReservation = {
   pickupBy: string;
   pickupMode: "asap" | "scheduled";
   pickupAt: string | null;
+  /** Comer aquí: cuántas personas (null = para llevar). */
+  dineInPartySize: number | null;
   lines: {
     name: string;
     qty: number;
@@ -733,6 +735,16 @@ ${preference ?? "not selected"}
 - Do not repeat answered questions.
 - Orders scheduled more than one hour ahead may need later confirmation.
 - Customers are not automatically charged for missed pickups.
+${
+  settings.dineIn
+    ? `- This business ACCEPTS dine-in reservations ("comer aquí").
+- After the customer picks dishes, ask once: "¿Para llevar o para comer aquí?" (EN: "To go or to eat here?").
+- For dine-in, also ask how many people, then the time (same available times / ASAP rules as pickup).
+- Dine-in holds the food and a spot, NOT a specific table. The customer sits anywhere and gives the 4-digit PIN or last name to the waiter.
+- If a dine-in customer does not arrive within ${settings.dineInToleranceMinutes} minutes after the time, it is marked as no-show.
+- Use orderType="dine_in" with partySize for dine-in, orderType="to_go" otherwise.`
+    : `- This business does NOT take dine-in reservations; every order is to go. Use orderType="to_go".`
+}
 - Payment happens when collecting the order.
 - Accepted methods: cash, card terminal and bank transfer.
 - The business validates the NIP before delivering the order.`;
@@ -1190,6 +1202,26 @@ export async function chat(
           .describe(
             "24-hour local time for scheduled pickup.",
           ),
+
+      orderType:
+        z.enum([
+          "to_go",
+          "dine_in",
+        ])
+          .optional()
+          .describe(
+            "to_go (para llevar) or dine_in (comer aquí). Required when the business accepts dine-in.",
+          ),
+
+      partySize:
+        z.number()
+          .int()
+          .min(1)
+          .max(20)
+          .optional()
+          .describe(
+            "Number of people for dine_in.",
+          ),
     }),
 
     execute: async ({
@@ -1198,6 +1230,8 @@ export async function chat(
       items,
       pickupMode,
       pickupTime,
+      orderType,
+      partySize,
     }) => {
       reservationAttempted = true;
 
@@ -1237,6 +1271,43 @@ export async function chat(
           ok: false,
           error:
             "Customer chose ASAP. Use pickupMode='asap'.",
+        };
+      }
+
+      // ====================================
+      // PARA LLEVAR O COMER AQUÍ
+      // ====================================
+
+      const dineInOn =
+        pickupSettings(state).dineIn;
+
+      if (
+        orderType === "dine_in" &&
+        !dineInOn
+      ) {
+        return {
+          ok: false,
+          error:
+            "This business does not take dine-in reservations. The order must be to go.",
+        };
+      }
+
+      if (dineInOn && !orderType) {
+        return {
+          ok: false,
+          error:
+            "Ask the customer: to go or to eat here (¿para llevar o para comer aquí?).",
+        };
+      }
+
+      const dineIn =
+        orderType === "dine_in";
+
+      if (dineIn && !partySize) {
+        return {
+          ok: false,
+          error:
+            "Ask how many people will eat here.",
         };
       }
 
@@ -1344,6 +1415,8 @@ export async function chat(
                 time:
                   pickupTime!,
               },
+          new Date(),
+          dineIn,
         );
 
       if (!picked.ok) {
@@ -1424,6 +1497,10 @@ export async function chat(
 
             pickup:
               picked.pickup,
+
+            dineIn: dineIn
+              ? { partySize: partySize! }
+              : null,
           },
         );
 
@@ -1515,6 +1592,10 @@ export async function chat(
           res.reservation
             .pickupAt,
 
+        dineInPartySize: dineIn
+          ? partySize!
+          : null,
+
         lines:
           res.reservation
             .lines.map(
@@ -1568,6 +1649,10 @@ export async function chat(
             state,
             ctx.lang,
           ),
+
+        dineIn: dineIn
+          ? `eat here, ${partySize} people; they sit anywhere and give the PIN or last name to the waiter`
+          : false,
 
         next:
           "The real order was saved and confirmed. The pickup PIN is displayed in the confirmation card. The customer pays when collecting the order.",

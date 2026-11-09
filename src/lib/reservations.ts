@@ -118,6 +118,8 @@ export async function startReservation(
     lang: "es" | "en";
     pickup: ResolvedPickup;
     customerId?: string | null;
+    /** Comer aquí: cuántas personas. */
+    dineIn?: { partySize: number } | null;
   },
 ): Promise<StartResult> {
   const lines = mergeLines(input.lines);
@@ -167,6 +169,9 @@ export async function startReservation(
         pickupMode: input.pickup.mode,
         pickupAt,
         customerId,
+        ...(input.dineIn
+          ? { dineIn: true, partySize: input.dineIn.partySize }
+          : {}),
       },
     );
 
@@ -175,6 +180,8 @@ export async function startReservation(
       pickupMode: input.pickup.mode,
       pickupAt,
       customerId,
+      dineIn: Boolean(input.dineIn),
+      partySize: input.dineIn?.partySize ?? null,
     };
   } catch (error) {
     console.error(
@@ -501,6 +508,19 @@ export async function sweep(
               state.slug,
               reservation.id,
               "expired",
+            )) || changed;
+        } else if (
+          reservation.dineIn &&
+          new Date(
+            reservation.pickupBy,
+          ).getTime() < now.getTime()
+        ) {
+          // Comer aquí y no llegó: ya se preparó,
+          // es merma y no regresa al inventario.
+          changed =
+            (await store.noShow(
+              state.slug,
+              reservation.id,
             )) || changed;
         } else if (
           new Date(

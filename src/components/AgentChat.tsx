@@ -891,6 +891,14 @@ export function AgentChat({
                           "—"}
                       </p>
 
+                      {reservation.dineInPartySize ? (
+                        <p className="text-sm font-bold text-brand">
+                          {es
+                            ? `🍽️ Comer aquí · ${reservation.dineInPartySize} ${reservation.dineInPartySize === 1 ? "persona" : "personas"}`
+                            : `🍽️ Dine in · ${reservation.dineInPartySize} ${reservation.dineInPartySize === 1 ? "person" : "people"}`}
+                        </p>
+                      ) : null}
+
                       {/* ====================
                           PRODUCTOS
                       ==================== */}

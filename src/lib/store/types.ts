@@ -66,6 +66,8 @@ export type PickupPatch = Partial<
     | "confirmAskedAt"
     | "prepAlertedAt"
     | "customerId"
+    | "dineIn"
+    | "partySize"
   >
 >;
 
@@ -343,6 +345,15 @@ export interface StallStore {
     slug: string,
     id: string,
     status: "voided" | "expired",
+  ): Promise<boolean>;
+
+  /**
+   * Comer aquí: el cliente no llegó. La comida ya
+   * se preparó, así que es merma: NO regresa al inventario.
+   */
+  noShow(
+    slug: string,
+    id: string,
   ): Promise<boolean>;
 
   // ========================================
