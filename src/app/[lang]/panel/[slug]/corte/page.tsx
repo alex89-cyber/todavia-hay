@@ -223,7 +223,7 @@ async function fetchHistory(
     let request = db
       .from("sales")
       .select(
-        "id, day_id, method, total_cents, created_at, reservation_id, sale_items(dish_id, qty, price_cents, dishes(name_es, name_en))",
+        "id, day_id, method, total_cents, created_at, reservation_id, table_tab_id, sale_items(dish_id, qty, price_cents, dishes(name_es, name_en))",
       )
       .eq("business_id", business.id)
       .order("created_at", { ascending: false })

@@ -42,6 +42,8 @@ const TEXT = {
     qty: "Cant.",
     amount: "Importe",
     method: "Pago",
+    origin: "Origen",
+    origins: { mostrador: "Mostrador", apartado: "Apartado", mesa: "Mesa" },
     customer: "Cliente",
     status: "Estado",
     items: "Platillos",
@@ -83,6 +85,8 @@ const TEXT = {
     qty: "Qty",
     amount: "Amount",
     method: "Payment",
+    origin: "Source",
+    origins: { mostrador: "Counter", apartado: "Pickup", mesa: "Table" },
     customer: "Customer",
     status: "Status",
     items: "Dishes",
@@ -356,14 +360,16 @@ export function CashUpDashboard({
 
   const data = useMemo(() => {
     const v = tables.ventas;
-    const total = v.reduce((s, r) => s + r.importe, 0);
-    const saleCount = new Set(v.map((r) => r.venta)).size;
+    const p = tables.pagos;
+    const total = p.reduce((s, r) => s + r.importe, 0);
+    // Una cuenta de mesa pagada en partes cuenta como una sola venta.
+    const saleCount = new Set(p.map((r) => r.cuenta)).size;
     const dishCount = v.reduce((s, r) => s + r.cantidad, 0);
     const byDish = sumBy(v, (r) => r.platillo, (r) => r.importe).sort((a, b) => b.value - a.value);
     const qtyByDish = new Map(sumBy(v, (r) => r.platillo, (r) => r.cantidad).map((p) => [p.label, p.value]));
     for (const d of byDish) d.note = `${qtyByDish.get(d.label) ?? 0} ${lang === "es" ? "vendidos" : "sold"}`;
-    const byHour = sumBy(v, (r) => r.horaDelDia, (r) => r.importe).sort((a, b) => a.label.localeCompare(b.label));
-    const byMethod = sumBy(v, (r) => r.metodo, (r) => r.importe).sort((a, b) => b.value - a.value);
+    const byHour = sumBy(p, (r) => r.horaDelDia, (r) => r.importe).sort((a, b) => a.label.localeCompare(b.label));
+    const byMethod = sumBy(p, (r) => r.metodo, (r) => r.importe).sort((a, b) => b.value - a.value);
     const stock = [...tables.inventario]
       .filter((r) => r.usado > 0)
       .sort((a, b) => b.usadoPct - a.usadoPct)
@@ -478,8 +484,8 @@ export function CashUpDashboard({
             onClick={() =>
               download(
                 `${fileBase}-ventas.csv`,
-                [t.time, t.dish, t.qty, t.amount, t.method, "id"],
-                tables.ventas.map((r) => [at(r.hora), r.platillo, r.cantidad, r.importe.toFixed(2), r.metodo, r.venta]),
+                [t.time, t.dish, t.qty, t.amount, t.method, t.origin, "id"],
+                tables.ventas.map((r) => [at(r.hora), r.platillo, r.cantidad, r.importe.toFixed(2), r.metodo, t.origins[r.origen], r.venta]),
               )
             }
             className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
@@ -496,7 +502,8 @@ export function CashUpDashboard({
                   <th className="py-2 pr-3 font-semibold">{t.dish}</th>
                   <th className="py-2 pr-3 text-right font-semibold">{t.qty}</th>
                   <th className="py-2 pr-3 text-right font-semibold">{t.amount}</th>
-                  <th className="py-2 font-semibold">{t.method}</th>
+                  <th className="py-2 pr-3 font-semibold">{t.method}</th>
+                  <th className="py-2 font-semibold">{t.origin}</th>
                 </tr>
               </thead>
               <tbody>
@@ -506,7 +513,8 @@ export function CashUpDashboard({
                     <td className="py-2 pr-3">{r.platillo}</td>
                     <td className="py-2 pr-3 text-right tabular-nums">{r.cantidad}</td>
                     <td className="py-2 pr-3 text-right tabular-nums">{fmt(r.importe)}</td>
-                    <td className="py-2">{r.metodo}</td>
+                    <td className="py-2 pr-3">{r.metodo}</td>
+                    <td className="py-2">{t.origins[r.origen]}</td>
                   </tr>
                 ))}
               </tbody>

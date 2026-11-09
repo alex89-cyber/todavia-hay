@@ -429,7 +429,8 @@ async function EmployeeContent({
                 (item) =>
                 (item.role === "waiter" ||
                     item.role === "manager") &&
-                item.business.plan === "medium",
+                (item.business.plan === "medium" ||
+                    item.business.plan === "plus"),
             )
             .map((item) => (
                 <Link
