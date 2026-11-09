@@ -16,6 +16,7 @@ import { isOwner } from "@/lib/owner-auth";
 import {
   cashUpTables,
   historicalCashUpTables,
+  type CashUpTables,
   type HistoricalSaleRow,
   type HistoricalInventoryRow,
 } from "@/lib/analytics";
@@ -139,6 +140,66 @@ function snapshotInventory(
   return Array.isArray(snapshot.summary?.used)
     ? snapshot.summary.used
     : [];
+}
+
+/**
+ * Pone el nombre del mesero en cada cobro de mesa: el que abrió la cuenta.
+ * Si falla, el corte se muestra igual, sin la sección de meseros.
+ */
+async function attachWaiters(tables: CashUpTables) {
+  const tabIds = [
+    ...new Set(
+      tables.pagos.filter((p) => p.origen === "mesa").map((p) => p.cuenta),
+    ),
+  ];
+  const db = getDb();
+  if (!db || tabIds.length === 0) return;
+
+  try {
+    const { data: tabs, error } = await db
+      .from("table_tabs")
+      .select("id, opened_by")
+      .in("id", tabIds);
+    if (error) throw error;
+
+    const userIds = [
+      ...new Set(
+        (tabs ?? [])
+          .map((tab) => tab.opened_by as string | null)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+
+    const names = new Map<string, string>();
+    if (userIds.length) {
+      const { data: profiles, error: profilesError } = await db
+        .from("profiles")
+        .select("id, first_name, last_name")
+        .in("id", userIds);
+      if (profilesError) throw profilesError;
+      for (const p of profiles ?? []) {
+        const name = `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim();
+        if (name) names.set(p.id as string, name);
+      }
+      // Sin nombre en el perfil: se usa el correo.
+      for (const id of userIds.filter((id) => !names.has(id))) {
+        const { data } = await db.auth.admin.getUserById(id);
+        if (data.user?.email) names.set(id, data.user.email);
+      }
+    }
+
+    const waiterByTab = new Map(
+      (tabs ?? []).map((tab) => [
+        tab.id as string,
+        tab.opened_by ? (names.get(tab.opened_by as string) ?? null) : null,
+      ]),
+    );
+    for (const p of tables.pagos) {
+      if (p.origen === "mesa") p.mesero = waiterByTab.get(p.cuenta) ?? null;
+    }
+  } catch (error) {
+    console.error("corte meseros:", error);
+  }
 }
 
 async function fetchHistory(
@@ -417,6 +478,8 @@ async function Report({
               ? snapshotInventory(selectedDay?.cash_up)
               : [],
         });
+
+  await attachWaiters(tables);
 
   const totalCents = sales.reduce(
     (sum, sale) => sum + sale.total_cents,
