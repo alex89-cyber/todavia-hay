@@ -78,10 +78,13 @@ async function KitchenContent({ params }: Props) {
   return (
     <main className="mx-auto w-full max-w-screen-2xl flex-1 px-4 py-8 sm:px-6">
       <header>
-        <Link href={backHref} className="text-sm font-bold text-[#a3341f] hover:underline">
-          ← {es ? "Volver a mi panel" : "Back to dashboard"}
-        </Link>
-        <p className="mt-6 text-xs font-bold uppercase tracking-widest text-[#a3341f]">
+        {/* Cocina solo tiene esta pantalla: sin "Volver". Dueño y encargado sí lo ven. */}
+        {access.role !== "kitchen" && (
+          <Link href={backHref} className="mb-6 inline-block text-sm font-bold text-[#a3341f] hover:underline">
+            ← {es ? "Volver a mi panel" : "Back to dashboard"}
+          </Link>
+        )}
+        <p className="text-xs font-bold uppercase tracking-widest text-[#a3341f]">
           {es ? "COCINA" : "KITCHEN"}
         </p>
         <h1 className="mt-2 text-3xl font-black text-[#302018]">
