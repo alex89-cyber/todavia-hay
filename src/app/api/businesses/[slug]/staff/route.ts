@@ -2,7 +2,7 @@
 import { z } from "zod";
 
 import { currentAccount } from "@/lib/auth/server";
-import { admin, findUserIdByEmail } from "@/lib/accounts";
+import { admin, findUserByEmail } from "@/lib/accounts";
 import { origin as publicOrigin, sameOrigin } from "@/lib/origin";
 
 import {
@@ -406,7 +406,17 @@ export async function POST(
   let existingId: string | null;
 
   try {
-    existingId = await findUserIdByEmail(email);
+    // Una invitación que nunca se aceptó no cuenta
+    // como cuenta: se le vuelve a mandar.
+    const existing = await findUserByEmail(email);
+    existingId = existing?.confirmed ? existing.id : null;
+    if (existing && !existing.confirmed) {
+      await db
+        .from("business_members")
+        .delete()
+        .eq("business_id", access.businessId)
+        .eq("user_id", existing.id);
+    }
   } catch (error) {
     console.error(
       "Error buscando cuenta:",
@@ -437,7 +447,8 @@ export async function POST(
 
   const redirectTo =
     `${publicOrigin(request)}` +
-    "/es/aceptar-invitacion";
+    "/es/aceptar-invitacion?next=" +
+    encodeURIComponent("/es/empleado");
 
   const {
     data,

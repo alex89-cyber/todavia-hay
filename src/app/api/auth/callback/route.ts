@@ -26,6 +26,25 @@ export async function GET(request: Request) {
 
   const lang = next.startsWith("/en") ? "en" : "es";
   const type = params.get("type");
+
+  // Invitación y nueva contraseña: el enlace se usa
+  // hasta que la persona pone su contraseña y toca
+  // el botón. Si el antivirus del correo abre el
+  // enlace antes que ella, no lo gasta.
+  if (
+    params.get("token_hash") &&
+    (type === "invite" || type === "recovery")
+  ) {
+    const accept = new URL(
+      `/${lang}/aceptar-invitacion`,
+      origin
+    );
+    accept.searchParams.set("token_hash", params.get("token_hash")!);
+    accept.searchParams.set("type", type);
+    accept.searchParams.set("next", next);
+    return NextResponse.redirect(accept);
+  }
+
   const sb = await supabaseServer();
 
   let valid = false;

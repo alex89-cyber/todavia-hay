@@ -14,12 +14,27 @@ export function admin(): SupabaseClient {
 
 /** Finds an existing account by email (Supabase has no direct lookup). */
 export async function findUserIdByEmail(email: string): Promise<string | null> {
+  return (await findUserByEmail(email))?.id ?? null;
+}
+
+/**
+ * Cuenta de un correo. confirmed = false: la invitación
+ * nunca se aceptó (todavía no tiene contraseña).
+ */
+export async function findUserByEmail(
+  email: string,
+): Promise<{ id: string; confirmed: boolean } | null> {
   const wanted = email.trim().toLowerCase();
   for (let page = 1; page < 50; page++) {
     const { data, error } = await admin().auth.admin.listUsers({ page, perPage: 200 });
     if (error) throw error;
     const hit = data.users.find((u) => u.email?.toLowerCase() === wanted);
-    if (hit) return hit.id;
+    if (hit) {
+      return {
+        id: hit.id,
+        confirmed: Boolean(hit.email_confirmed_at || hit.last_sign_in_at),
+      };
+    }
     if (data.users.length < 200) return null;
   }
   return null;
