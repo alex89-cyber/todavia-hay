@@ -1,9 +1,13 @@
 import type { MetadataRoute } from "next";
 
-// Lets customers add a stall page to the home screen, which iPhone requires
-// for push alerts. No start_url: the app opens on the page it was added from.
+// App instalable completa de Todavía hay (iPhone la necesita para los avisos).
+// Siempre abre en "Explora negocios", sin importar desde qué página se
+// instaló; /negocios redirige al idioma del teléfono.
 export default function manifest(): MetadataRoute.Manifest {
   return {
+    id: "/",
+    start_url: "/negocios",
+    scope: "/",
     name: "¿Todavía hay?",
     short_name: "¿Todavía hay?",
     description: "Menú en vivo, avisos y apartados para puestos de comida.",
