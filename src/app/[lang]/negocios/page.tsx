@@ -7,6 +7,7 @@ import { connection } from "next/server";
 import { hasLocale } from "@/dictionaries";
 import { admin } from "@/lib/accounts";
 import { currentAccount } from "@/lib/auth/server";
+import { InstallAppButton } from "@/components/InstallAppButton";
 
 type Props = {
   params: Promise<{ lang: string }>;
@@ -70,7 +71,8 @@ async function BusinessDirectory({
             ← Todavía Hay
           </Link>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <InstallAppButton lang={es ? "es" : "en"} />
             {panel && (
               <Link
                 href={panel}
