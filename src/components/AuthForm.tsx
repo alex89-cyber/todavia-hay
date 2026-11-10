@@ -37,7 +37,8 @@ const TEXT = {
     saved: "Contraseña guardada.",
     wrong: "Correo o contraseña incorrectos.",
     notConfirmed: "Todavía no confirmas tu correo. Revisa tu bandeja (y spam).",
-    exists: "Ya hay una cuenta con ese correo. Entra o recupera tu contraseña.",
+    exists: "Ya hay una cuenta o una invitación con ese correo. Si te invitaron, abre el correo de invitación o usa «Olvidé mi contraseña» para crear tu contraseña.",
+    linkUsed: "Ese enlace ya se usó o venció. Si te invitaron y nunca pusiste contraseña, usa «Olvidé mi contraseña» con tu correo para crearla.",
     weak: "La contraseña debe tener al menos 8 caracteres.",
     names: "Escribe tu nombre y tu apellido.",
     error: "Algo falló. Intenta otra vez.",
@@ -69,7 +70,8 @@ const TEXT = {
     saved: "Password saved.",
     wrong: "Wrong email or password.",
     notConfirmed: "You haven't confirmed your email yet. Check your inbox (and spam).",
-    exists: "There's already an account with that email. Sign in or reset your password.",
+    exists: "There's already an account or an invitation for that email. If you were invited, open the invitation email or use “Forgot my password” to set your password.",
+    linkUsed: "That link was already used or expired. If you were invited and never set a password, use “Forgot my password” with your email to set it.",
     weak: "The password needs at least 8 characters.",
     names: "Type your first and last name.",
     error: "Something failed. Try again.",
@@ -82,12 +84,15 @@ export function AuthForm({
   lang,
   next,
   allowSignup = true,
+  linkError = false,
 }: {
   mode: AuthMode;
   lang: "es" | "en";
   next: string;
   /** false: no "Crear cuenta" link (partner portal, accounts are invitation only). */
   allowSignup?: boolean;
+  /** Viene de un enlace del correo que ya se usó o venció. */
+  linkError?: boolean;
 }) {
   const t = TEXT[lang];
   const [email, setEmail] = useState("");
@@ -96,7 +101,7 @@ export function AuthForm({
   const [lastName, setLast] = useState("");
   const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(linkError && mode === "login" ? t.linkUsed : null);
   const [done, setDone] = useState<string | null>(null);
 
   const q = `?next=${encodeURIComponent(next)}`;

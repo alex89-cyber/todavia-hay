@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { admin, findUserIdByEmail } from "@/lib/accounts";
+import { admin, findUserByEmail } from "@/lib/accounts";
 import { origin as publicOrigin, sameOrigin } from "@/lib/origin";
 import { platformAdmin } from "@/lib/platform-admin";
 
@@ -89,10 +89,12 @@ export async function POST(request: Request) {
   let userId: string | null = null;
   let invited = false;
   try {
-    userId = await findUserIdByEmail(ownerEmail);
+    const existing = await findUserByEmail(ownerEmail);
+    userId = existing?.confirmed ? existing.id : null;
     if (!userId) {
+      // Sin cuenta, o invitado antes y nunca entró: (re)enviar invitación.
       const { data, error } = await db.auth.admin.inviteUserByEmail(ownerEmail, {
-        redirectTo: `${publicOrigin(request)}/api/auth/callback?next=${encodeURIComponent(panel)}`,
+        redirectTo: `${publicOrigin(request)}/es/aceptar-invitacion?next=${encodeURIComponent(panel)}`,
         data: {
           next: panel,
           lang: "es",
@@ -140,4 +142,66 @@ export async function POST(request: Request) {
     },
     { status: 201 },
   );
+}
+
+// ==========================================
+// BORRAR UN NEGOCIO (SOLO SOCIOS)
+// ==========================================
+//
+// Borra el negocio y todo su historial. Las
+// cuentas de las personas se conservan. Para
+// evitar accidentes, hay que escribir el nombre
+// exacto del negocio.
+
+const DeleteBusiness = z.object({
+  businessId: z.string().uuid(),
+  confirmName: z.string().trim().min(1).max(80),
+});
+
+export async function DELETE(request: Request) {
+  if (!sameOrigin(request)) {
+    return fail("Origen no autorizado", 403);
+  }
+
+  const account = await platformAdmin();
+  if (!account) {
+    return fail("Solo los socios autorizados pueden borrar negocios", 403);
+  }
+
+  const input = DeleteBusiness.safeParse(await request.json().catch(() => null));
+  if (!input.success) {
+    return fail("Datos inválidos", 400);
+  }
+
+  const db = admin();
+  const { data: business, error: readError } = await db
+    .from("businesses")
+    .select("id, name")
+    .eq("id", input.data.businessId)
+    .maybeSingle();
+
+  if (readError) {
+    console.error("Borrar negocio:", readError.message);
+    return fail("No se pudo leer el negocio", 500);
+  }
+  if (!business) {
+    return fail("Ese negocio ya no existe", 404);
+  }
+  if (business.name.trim().toLowerCase() !== input.data.confirmName.toLowerCase()) {
+    return fail("El nombre no coincide. Escríbelo igual que aparece.", 400);
+  }
+
+  const { error } = await db.rpc("delete_business", { p_business: business.id });
+  if (error) {
+    console.error("Borrar negocio:", error.message);
+    return fail(
+      /delete_business/.test(error.message)
+        ? "Falta correr la migración 0027_delete_business.sql en Supabase."
+        : "No se pudo borrar el negocio",
+      500,
+    );
+  }
+
+  console.info("Negocio borrado", { business: business.id, by: account.id });
+  return Response.json({ ok: true });
 }

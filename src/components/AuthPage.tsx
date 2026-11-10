@@ -15,11 +15,12 @@ export async function AuthPage({
 }) {
   const { lang } = await params;
   if (!hasLocale(lang) || !authEnabled()) notFound();
-  const raw = (await searchParams).next;
+  const query = await searchParams;
+  const raw = query.next;
   const next = safeNext(typeof raw === "string" ? raw : null, `/${lang}/cuenta`);
   return (
     <main className="flex w-full flex-1 items-center justify-center px-4 py-10">
-      <AuthForm mode={mode} lang={lang} next={next} />
+      <AuthForm mode={mode} lang={lang} next={next} linkError={query.error === "link"} />
     </main>
   );
 }

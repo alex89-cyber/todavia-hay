@@ -36,6 +36,47 @@ function BusinessCard({
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
+  // Borrar negocio: hay que escribir su nombre.
+  const [deleting, setDeleting] = useState(false);
+  const [confirmName, setConfirmName] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const nameMatches =
+    confirmName.trim().toLowerCase() ===
+    business.name.trim().toLowerCase();
+
+  async function deleteBusiness() {
+    if (loading || !nameMatches) return;
+
+    setLoading(true);
+    setDeleteError("");
+
+    try {
+      const response = await fetch("/api/platform/businesses", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          businessId: business.id,
+          confirmName,
+        }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(result.error ?? "No se pudo borrar el negocio.");
+      }
+
+      router.refresh();
+    } catch (err) {
+      setDeleteError(
+        err instanceof Error ? err.message : "Ocurrió un error.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function savePlan() {
     if (loading || plan === saved) return;
 
@@ -162,6 +203,70 @@ function BusinessCard({
           {error}
         </p>
       )}
+
+      <div className="mt-6 border-t border-[#E3E8E0] pt-4">
+        {!deleting ? (
+          <button
+            type="button"
+            onClick={() => setDeleting(true)}
+            className="text-sm font-bold text-red-700 underline"
+          >
+            Eliminar negocio
+          </button>
+        ) : (
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+            <p className="text-sm font-bold text-red-800">
+              ¿Eliminar {business.name}?
+            </p>
+            <p className="mt-1 text-xs text-red-800">
+              Se borran su menú, inventario, ventas, apartados,
+              mesas, cortes y personal. No se puede deshacer.
+              Las cuentas de las personas no se borran.
+            </p>
+            <label
+              htmlFor={`delete-${business.id}`}
+              className="mt-3 block text-xs font-bold text-red-800"
+            >
+              Escribe «{business.name}» para confirmar
+            </label>
+            <input
+              id={`delete-${business.id}`}
+              value={confirmName}
+              onChange={(event) => setConfirmName(event.target.value)}
+              disabled={loading}
+              autoComplete="off"
+              className="mt-1 w-full rounded-xl border border-red-200 bg-white px-3 py-2"
+            />
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={deleteBusiness}
+                disabled={loading || !nameMatches}
+                className="flex-1 rounded-full bg-red-700 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40"
+              >
+                {loading ? "Eliminando..." : "Eliminar para siempre"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleting(false);
+                  setConfirmName("");
+                  setDeleteError("");
+                }}
+                disabled={loading}
+                className="rounded-full border border-[#DDD3C7] bg-white px-4 py-2.5 text-sm font-bold"
+              >
+                Cancelar
+              </button>
+            </div>
+            {deleteError && (
+              <p role="alert" className="mt-2 text-sm font-semibold text-red-700">
+                {deleteError}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
     </article>
   );
 }
