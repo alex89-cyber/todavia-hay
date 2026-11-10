@@ -343,6 +343,50 @@ function HoldCard({
   }
 
   // ========================================
+  // CANCELAR (EL CLIENTE)
+  // ========================================
+
+  async function cancelOrder() {
+    if (!hold.canCancel || busy) return;
+    if (
+      !window.confirm(
+        es
+          ? "¿Cancelar tu pedido? La comida se libera para otros clientes."
+          : "Cancel your order? The food is released for other customers.",
+      )
+    ) {
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      const response = await fetch(
+        `/api/stalls/${encodeURIComponent(slug)}/holds`,
+        {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "cancel", id: hold.id }),
+        },
+      );
+
+      if (!response.ok) throw new Error(String(response.status));
+
+      onChange({ status: "voided", canCancel: false, code: null });
+    } catch {
+      setError(
+        es
+          ? "Ya no se puede cancelar desde aquí: tu pedido ya se está preparando. Llama al negocio."
+          : "It can't be cancelled here anymore: your order is being prepared. Call the business.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // ========================================
   // NOTIFICACIONES
   // ========================================
 
@@ -478,12 +522,37 @@ function HoldCard({
       {active &&
         hold.stage ===
           "awaiting_confirmation" && (
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={confirm}
+              disabled={busy}
+              className="rounded-full bg-brand px-5 py-3 font-bold text-white disabled:opacity-50"
+            >
+              {p.pickupConfirmButton}
+            </button>
+            <button
+              type="button"
+              onClick={() => void cancelOrder()}
+              disabled={busy}
+              className="rounded-full border border-current px-5 py-3 font-bold disabled:opacity-50"
+            >
+              {es ? "Ya no voy" : "I'm not coming"}
+            </button>
+          </div>
+        )}
+
+      {/* CANCELAR PEDIDO */}
+
+      {active &&
+        hold.canCancel &&
+        hold.stage !== "awaiting_confirmation" && (
           <button
-            onClick={confirm}
+            type="button"
+            onClick={() => void cancelOrder()}
             disabled={busy}
-            className="rounded-full bg-brand px-5 py-3 font-bold text-white disabled:opacity-50"
+            className="text-sm font-bold underline disabled:opacity-50"
           >
-            {p.pickupConfirmButton}
+            {es ? "Cancelar pedido" : "Cancel order"}
           </button>
         )}
 

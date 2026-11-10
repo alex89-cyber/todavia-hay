@@ -696,6 +696,24 @@ export const supabaseStore: StallStore = {
     };
   },
 
+  async voidSale(slug, saleId) {
+    const business = await must(slug);
+
+    const result = await db().rpc("void_sale", {
+      p_business: business.id,
+      p_sale: saleId,
+    });
+
+    if (result.error) {
+      if (/sale_not_found|sale_not_quick|sale_day_closed/.test(result.error.message)) {
+        return false;
+      }
+      throw new Error(`Supabase void_sale: ${result.error.message}`);
+    }
+
+    return true;
+  },
+
   // ========================================
   // MARCAR PRODUCTO AGOTADO
   // ========================================

@@ -237,6 +237,17 @@ export interface StallStore {
     method: PaymentMethod,
   ): Promise<SaleResult>;
 
+  /**
+   * Anula una venta del cobro rápido del día abierto:
+   * regresa el inventario y la quita del corte.
+   * false si no existe, ya cerró el día o viene de
+   * un apartado o una mesa.
+   */
+  voidSale(
+    slug: string,
+    saleId: string,
+  ): Promise<boolean>;
+
   // ========================================
   // INVENTORY
   // ========================================

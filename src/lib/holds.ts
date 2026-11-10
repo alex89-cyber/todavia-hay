@@ -36,6 +36,8 @@ export type HeldOrder = {
   status: ReservationStatus | "seated";
 
   stage: KitchenStage;
+  /** El cliente todavía puede cancelarlo él mismo. */
+  canCancel: boolean;
   needsConfirmation: boolean;
   confirmed: boolean;
   confirmBy: string | null;
@@ -95,6 +97,8 @@ export function heldOrder(
 
     stage: kitchenStage(r, p, now),
 
+    canCancel: customerCanCancel(s, r, now),
+
     needsConfirmation: confirm,
 
     confirmed: Boolean(r.confirmedAt),
@@ -106,6 +110,34 @@ export function heldOrder(
         ).toISOString()
       : null,
   };
+}
+
+// ==========================================
+// ¿EL CLIENTE PUEDE CANCELARLO?
+// ==========================================
+//
+// Mientras la cocina no lo empieza:
+// - programado: hasta que toca prepararlo
+//   (incluye "¿Sigues en pie?" → "Ya no voy");
+// - para ahorita: los primeros minutos.
+// Después, el cliente le habla al negocio.
+
+export const ASAP_CANCEL_MS = 3 * 60_000;
+
+export function customerCanCancel(
+  s: StallState,
+  r: Reservation,
+  now = new Date(),
+): boolean {
+  if (r.status !== "authorized" || r.readyAt) return false;
+
+  const stage = kitchenStage(r, pickupSettings(s), now);
+  if (stage === "scheduled" || stage === "awaiting_confirmation") return true;
+
+  return (
+    r.pickupMode === "asap" &&
+    now.getTime() - new Date(r.createdAt).getTime() < ASAP_CANCEL_MS
+  );
 }
 
 // ==========================================

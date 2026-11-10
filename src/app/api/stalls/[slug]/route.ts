@@ -539,6 +539,12 @@ const Action = z.discriminatedUnion(
         .min(1),
     }),
 
+    // Anular una venta del cobro rápido hecha por error.
+    z.object({
+      action: z.literal("voidSale"),
+      saleId: z.string().min(1).max(80),
+    }),
+
     // ======================================
     // CANJE ANTERIOR
     //
@@ -569,6 +575,7 @@ const Action = z.discriminatedUnion(
 // ==========================================
 
 const MAY_BRING_BACK = new Set([
+  "voidSale",
   "open",
   "soldOut",
   "cancelReservation",
@@ -1099,6 +1106,20 @@ export async function POST(
     // No descontamos sellos aquí.
     // No descontamos inventario aquí.
     // ======================================
+
+    case "voidSale": {
+      const ok = await store.voidSale(slug, a.saleId);
+      if (!ok) {
+        return Response.json(
+          {
+            error:
+              "Esa venta ya no se puede anular (ya se cerró el día o viene de un apartado o una mesa).",
+          },
+          { status: 409 },
+        );
+      }
+      return Response.json(ownerView((await store.get(slug))!));
+    }
 
     case "redeem": {
       return Response.json(
