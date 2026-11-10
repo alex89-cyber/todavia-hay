@@ -78,7 +78,7 @@ export function heldOrder(
         (l) =>
           `${l.qty} × ${
             names.get(l.dishId) ?? "?"
-          }`,
+          }${l.note ? ` (${l.note})` : ""}`,
       )
       .join(", "),
 

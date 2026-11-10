@@ -356,6 +356,16 @@ export interface StallStore {
     id: string,
   ): Promise<boolean>;
 
+  /**
+   * Guarda las indicaciones por platillo de un apartado
+   * (ej. "sin cebolla"). No cambia el inventario.
+   */
+  setLineNotes(
+    slug: string,
+    id: string,
+    lines: OrderLine[],
+  ): Promise<void>;
+
   // ========================================
   // STAMP CARDS
   // ========================================

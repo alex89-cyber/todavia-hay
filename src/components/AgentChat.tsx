@@ -70,6 +70,15 @@ function asksOrderType(text: string) {
   );
 }
 
+/** ¿El asistente preguntó si los platillos van con todo? */
+function asksWithEverything(text: string) {
+  const t = text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  return /con todo/.test(t) || /with everything/.test(t);
+}
+
 type ChatResponse = {
   reply?: string;
   reservation?: AgentReservation;
@@ -923,7 +932,7 @@ export function AgentChat({
                               reservation.lines
                                 .map(
                                   (line) =>
-                                    `${line.qty} × ${line.name}`,
+                                    `${line.qty} × ${line.name}${line.note ? ` (${line.note})` : ""}`,
                                 )
                                 .join(", "),
 
@@ -1063,6 +1072,28 @@ export function AgentChat({
                           className="rounded-full bg-brand px-3 py-1.5 text-sm font-semibold text-white"
                         >
                           🍽️ {es ? "Comer aquí" : "Eat here"}
+                        </button>
+                      </div>
+                    )}
+
+                  {/* ======================
+                      ¿CON TODO?
+                  ====================== */}
+
+                  {message.role === "assistant" &&
+                    index === turns.length - 1 &&
+                    !busy &&
+                    !asksOrderType(message.content) &&
+                    asksWithEverything(message.content) && (
+                      <div className="flex w-full max-w-[85%] flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void send(es ? "Con todo" : "With everything")
+                          }
+                          className="rounded-full bg-brand px-3 py-1.5 text-sm font-semibold text-white"
+                        >
+                          ✅ {es ? "Con todo" : "With everything"}
                         </button>
                       </div>
                     )}

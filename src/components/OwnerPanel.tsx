@@ -1500,7 +1500,7 @@ function Reservations({
           `${l.qty} × ${
             dish.get(l.dishId) ??
             l.dishId
-          }`,
+          }${l.note ? ` (${l.note})` : ""}`,
       )
       .join(", ");
 
