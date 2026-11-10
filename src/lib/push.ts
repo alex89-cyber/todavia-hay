@@ -1,4 +1,5 @@
 import "server-only";
+import { createECDH } from "node:crypto";
 import webpush from "web-push";
 import { menuAvailability } from "./inventory";
 import { shortName, type Reservation, type StallState } from "./stall";
@@ -21,7 +22,37 @@ const subject =
 export const pushConfigured = () => Boolean(publicKey && privateKey);
 export const vapidPublicKey = () => (pushConfigured() ? publicKey : null);
 
-if (pushConfigured()) webpush.setVapidDetails(subject, publicKey, privateKey);
+if (pushConfigured()) {
+  webpush.setVapidDetails(subject, publicKey, privateKey);
+  checkVapid();
+}
+
+/** Revisa al arrancar que las llaves sean pareja y que el subject sirva (sin imprimir valores). */
+function checkVapid() {
+  try {
+    const ecdh = createECDH("prime256v1");
+    ecdh.setPrivateKey(Buffer.from(privateKey, "base64url"));
+    const derived = ecdh.getPublicKey().toString("base64url");
+    if (derived !== publicKey.replace(/=+$/, "")) {
+      console.error("push: VAPID_PUBLIC_KEY y VAPID_PRIVATE_KEY no son pareja; Apple y Google rechazan los avisos.");
+    }
+  } catch (e) {
+    console.error("push: no se pudo leer VAPID_PRIVATE_KEY:", (e as Error).message);
+  }
+  if (!/^(mailto:[^\s@]+@[^\s@]+\.[^\s@]+|https:\/\/[^\s]+)$/.test(subject) || /localhost/.test(subject)) {
+    console.error("push: VAPID_SUBJECT debe ser mailto:correo@dominio o https://tu-dominio (sin espacios ni localhost).");
+  }
+}
+
+/** Motivo del rechazo, para el log: código, respuesta del servicio y a quién se mandó. */
+function why(e: unknown) {
+  const err = e as { statusCode?: number; body?: string; endpoint?: string; message?: string };
+  let host = "";
+  try {
+    host = err.endpoint ? new URL(err.endpoint).host : "";
+  } catch {}
+  return `${err.statusCode ?? "?"} ${String(err.body ?? err.message ?? "").slice(0, 200).trim()} ${host}`.trim();
+}
 
 type Message = { title: string; body: string; url: string };
 
@@ -67,7 +98,7 @@ export async function notifyWaiting(s: StallState): Promise<number> {
     if (r.status === "fulfilled") sent++;
     // 404/410: the customer unsubscribed or the browser dropped it. Nothing to keep.
     else if (![404, 410].includes((r.reason as { statusCode?: number }).statusCode ?? 0)) {
-      console.error("push: send failed", (r.reason as Error).message);
+      console.error("push: send failed", why(r.reason));
     }
   }
   console.log(`push: ${sent}/${due.length} sent for ${s.slug}`);
@@ -96,7 +127,7 @@ async function sendTo(slug: string, reservationId: string | null, build: (lang: 
       } catch (e) {
         const code = (e as { statusCode?: number }).statusCode ?? 0;
         if ([404, 410].includes(code)) await store.dropPush(slug, t.endpoint).catch(() => {});
-        else console.error("push: send failed", (e as Error).message);
+        else console.error("push: send failed", why(e));
       }
     }),
   );
