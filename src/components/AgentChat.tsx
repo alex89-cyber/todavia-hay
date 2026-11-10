@@ -263,6 +263,51 @@ export function AgentChat({
     Record<string, OrderStatus>
   >({});
 
+  // Pedidos que el cliente todavía puede cancelar él mismo.
+  const [cancellable, setCancellable] =
+    useState<Record<string, boolean>>({});
+
+  const [cancelling, setCancelling] =
+    useState<string | null>(null);
+
+  async function cancelOrder(id: string) {
+    if (cancelling) return;
+    if (
+      !window.confirm(
+        lang === "es"
+          ? "¿Cancelar tu pedido? La comida se libera para otros clientes."
+          : "Cancel your order? The food is released for other customers.",
+      )
+    ) {
+      return;
+    }
+
+    setCancelling(id);
+    try {
+      const response = await fetch(
+        `/api/stalls/${encodeURIComponent(slug)}/holds`,
+        {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "cancel", id }),
+        },
+      );
+      if (!response.ok) throw new Error(String(response.status));
+      setOrderStatuses((previous) => ({ ...previous, [id]: "voided" }));
+      setCancellable((previous) => ({ ...previous, [id]: false }));
+    } catch {
+      setCancellable((previous) => ({ ...previous, [id]: false }));
+      window.alert(
+        lang === "es"
+          ? "Ya no se puede cancelar desde aquí: tu pedido ya se está preparando. Llama al negocio."
+          : "It can't be cancelled here anymore: your order is being prepared. Call the business.",
+      );
+    } finally {
+      setCancelling(null);
+    }
+  }
+
   // ========================================
   // REFERENCIAS
   // ==========================================
@@ -413,10 +458,18 @@ export function AgentChat({
           OrderStatus
         > = {};
 
+        const canCancel: Record<string, boolean> = {};
+
         for (const order of data.holds) {
           statuses[order.id] =
             order.status;
+          canCancel[order.id] = order.canCancel;
         }
+
+        setCancellable((previous) => ({
+          ...previous,
+          ...canCancel,
+        }));
 
         setOrderStatuses(
           (previous) => ({
@@ -748,6 +801,11 @@ export function AgentChat({
           }),
         );
 
+        setCancellable((previous) => ({
+          ...previous,
+          [id]: true,
+        }));
+
         // Avisar a otros componentes.
         window.dispatchEvent(
           new Event(
@@ -1035,6 +1093,21 @@ export function AgentChat({
                           </p>
                         )}
                       </div>
+
+                      {active && cancellable[reservation.id] && (
+                        <button
+                          type="button"
+                          onClick={() => void cancelOrder(reservation.id)}
+                          disabled={cancelling !== null}
+                          className="text-sm font-bold text-bad underline disabled:opacity-50"
+                        >
+                          {cancelling === reservation.id
+                            ? "…"
+                            : es
+                              ? "Cancelar pedido"
+                              : "Cancel order"}
+                        </button>
+                      )}
                     </div>
                   )}
 

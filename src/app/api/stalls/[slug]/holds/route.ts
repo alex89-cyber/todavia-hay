@@ -1,8 +1,8 @@
 import { cookies } from "next/headers";
 import { connection } from "next/server";
 import { z } from "zod";
-import { heldOrders, holdIds } from "@/lib/holds";
-import { confirmPickup, loadStall } from "@/lib/reservations";
+import { customerCanCancel, heldOrders, holdIds } from "@/lib/holds";
+import { cancel, confirmPickup, loadStall } from "@/lib/reservations";
 import { HOLDS_COOKIE } from "@/lib/stall";
 import { store } from "@/lib/store";
 import { currentAccount } from "@/lib/auth/server";
@@ -10,10 +10,12 @@ import { currentAccount } from "@/lib/auth/server";
 // The customer's own orders, from the cookie set when they reserved.
 // GET  /api/stalls/:slug/holds?lang=es            → { holds }
 // POST /api/stalls/:slug/holds { action: "confirm", id }
+// POST /api/stalls/:slug/holds { action: "cancel", id }   → el cliente cancela
 // POST /api/stalls/:slug/holds { action: "push", id, lang, subscription }
 
 const Body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("confirm"), id: z.string().min(1).max(80) }),
+  z.object({ action: z.literal("cancel"), id: z.string().min(1).max(80) }),
   z.object({
     action: z.literal("push"),
     id: z.string().min(1).max(80),
@@ -50,6 +52,15 @@ export async function POST(request: Request, ctx: RouteContext<"/api/stalls/[slu
     ? r?.customerId === me.id
     : !r?.customerId && holdIds((await cookies()).get(HOLDS_COOKIE)?.value).includes(a.id);
   if (!mine) return Response.json({ error: "not_yours" }, { status: 403 });
+
+  if (a.action === "cancel") {
+    const s = await loadStall(slug);
+    if (!s || !r || !customerCanCancel(s, r)) {
+      return Response.json({ ok: false, error: "too_late" }, { status: 409 });
+    }
+    const ok = await cancel(slug, a.id, "voided");
+    return Response.json({ ok }, { status: ok ? 200 : 409 });
+  }
 
   if (a.action === "confirm") {
     const r = await confirmPickup(slug, a.id);

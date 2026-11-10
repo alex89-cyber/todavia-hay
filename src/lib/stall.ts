@@ -602,6 +602,8 @@ export type OwnerView = {
   sections: MenuSection[];
 
   today: CashUp;
+  /** Ventas del cobro rápido de hoy (las más nuevas primero), para anular. */
+  quickSales: Sale[];
   reservations: Reservation[];
   loyalty: Loyalty;
 
@@ -665,6 +667,10 @@ export function ownerView(
     sections: s.sections ?? [],
 
     today: cashUp(s),
+    quickSales: s.sales
+      .filter((sale) => !sale.reservationId && !sale.tableTabId)
+      .slice(-15)
+      .reverse(),
     loyalty: s.loyalty,
 
     reservations: [...s.reservations]

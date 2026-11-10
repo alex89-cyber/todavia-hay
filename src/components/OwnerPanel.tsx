@@ -189,6 +189,26 @@ export function OwnerPanel({
           n: view.loyalty.stampsPerReward,
         });
 
+  async function voidSale(saleId: string, total: string) {
+    if (busy) return;
+    if (
+      !window.confirm(
+        es
+          ? `¿Anular la venta de ${total}? El inventario regresa y deja de contar en el corte.`
+          : `Void the ${total} sale? Stock goes back and it no longer counts in the cash-up.`,
+      )
+    ) {
+      return;
+    }
+    const r = await act({ action: "voidSale", saleId });
+    if (!r) return;
+    setToast(
+      r.error
+        ? { kind: "bad", text: r.error }
+        : { kind: "ok", text: es ? "Venta anulada." : "Sale voided." },
+    );
+  }
+
   async function charge(method: "cash" | "card" | "transfer") {
     if (!lines.length || busy) return;
 
@@ -735,6 +755,55 @@ export function OwnerPanel({
       </section>
       </div>
       ))}
+
+      {/* VENTAS RÁPIDAS DE HOY: ANULAR UNA HECHA POR ERROR */}
+      {view.isOpen && (view.quickSales ?? []).length > 0 && (
+        <section className="px-4 pt-7 sm:px-6 lg:px-8">
+          <details className="rounded-2xl border border-[#eaded3] bg-white p-4">
+            <summary className="cursor-pointer text-sm font-bold text-[#302018]">
+              {es
+                ? `Ventas de hoy en el cobro rápido (${view.quickSales.length})`
+                : `Today's quick sales (${view.quickSales.length})`}
+            </summary>
+            <p className="mt-2 text-xs text-muted">
+              {es
+                ? "¿Cobraste algo por error? Anúlalo aquí: el inventario regresa y deja de contar en el corte."
+                : "Charged something by mistake? Void it here: stock goes back and it leaves the cash-up."}
+            </p>
+            <ul className="mt-3 divide-y divide-line">
+              {view.quickSales.map((sale) => {
+                const total = fmt(sale.totalCents);
+                const items = sale.lines
+                  .map((l) => {
+                    const d = view.dishes.find((x) => x.id === l.dishId);
+                    return `${l.qty} × ${d ? (es ? d.nameEs : d.nameEn) : "?"}`;
+                  })
+                  .join(", ");
+                return (
+                  <li key={sale.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                    <span className="min-w-0">
+                      <span className="tabular-nums text-muted">
+                        {clock(sale.at, timezone, lang)}
+                      </span>{" "}
+                      · <span className="font-bold">{total}</span>{" "}
+                      · {sale.method === "cash" ? o.cash : sale.method === "card" ? o.card : o.transfer}
+                      <span className="block text-xs text-muted">{items}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void voidSale(sale.id, total)}
+                      disabled={busy}
+                      className="rounded-lg border border-bad px-3 py-1.5 text-xs font-bold text-bad disabled:opacity-50"
+                    >
+                      {es ? "Anular venta" : "Void sale"}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </details>
+        </section>
+      )}
 
       {/* CLIENTES Y SELLOS */}
       {view.loyalty.rewardDishId && (

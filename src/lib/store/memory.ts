@@ -409,6 +409,21 @@ export const memoryStore: StallStore & { reset(slug: string): Promise<StallState
     };
   },
 
+  async voidSale(slug, saleId) {
+    const s = must(slug);
+    const sale = s.sales.find((x) => x.id === saleId);
+
+    if (!s.isOpen || !sale || sale.reservationId || sale.tableTabId) {
+      return false;
+    }
+
+    s.ingredients = restore(sale.lines, s.dishes, s.ingredients);
+    s.sales = s.sales.filter((x) => x.id !== saleId);
+    save(s);
+
+    return true;
+  },
+
   // ========================================
   // MARCAR PRODUCTO AGOTADO
   // ========================================
