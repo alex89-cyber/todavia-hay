@@ -12,6 +12,19 @@ export function admin(): SupabaseClient {
   }));
 }
 
+/** Finds an existing account by email (Supabase has no direct lookup). */
+export async function findUserIdByEmail(email: string): Promise<string | null> {
+  const wanted = email.trim().toLowerCase();
+  for (let page = 1; page < 50; page++) {
+    const { data, error } = await admin().auth.admin.listUsers({ page, perPage: 200 });
+    if (error) throw error;
+    const hit = data.users.find((u) => u.email?.toLowerCase() === wanted);
+    if (hit) return hit.id;
+    if (data.users.length < 200) return null;
+  }
+  return null;
+}
+
 export type Profile = { id: string; firstName: string; lastName: string; phone: string | null };
 
 /** Stamp card id of an account (stamp_cards.payer_id). */
