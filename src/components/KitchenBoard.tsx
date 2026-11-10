@@ -34,7 +34,7 @@ const TEXT = {
     pickup: "Recoger",
     viewOnly: "Solo lectura: entra con la cuenta de Cocina para marcar Lista.",
     sound: "Activar sonido",
-    soundOn: "Sonido activo",
+    soundOn: "Sonido activo · tocar para apagar",
     error: "No se pudo completar. Intenta otra vez.",
     updated: (time: string) => `Actualizado ${time}`,
   },
@@ -50,7 +50,7 @@ const TEXT = {
     pickup: "Pickup",
     viewOnly: "View only: sign in with the Kitchen account to mark tickets Ready.",
     sound: "Turn on sound",
-    soundOn: "Sound on",
+    soundOn: "Sound on · tap to mute",
     error: "Couldn't finish that. Try again.",
     updated: (time: string) => `Updated ${time}`,
   },
@@ -67,12 +67,14 @@ export default function KitchenBoard({ slug, lang }: Props) {
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [, setTick] = useState(0);
   const seen = useRef<Set<string> | null>(null);
+  // Suena solo con el sonido activo (el botón lo prende y apaga).
+  const soundOn = useRef(false);
 
   const accept = useCallback((next: KitchenSnapshot) => {
     const pending = new Set(next.tickets.filter((k) => k.status === "pending").map((k) => k.key));
     const before = seen.current;
     seen.current = pending;
-    if (before && [...pending].some((key) => !before.has(key))) beep(3);
+    if (soundOn.current && before && [...pending].some((key) => !before.has(key))) beep(3);
     setData(next);
     setUpdatedAt(new Date());
   }, []);
@@ -157,15 +159,19 @@ export default function KitchenBoard({ slug, lang }: Props) {
           <button
             type="button"
             onClick={() => {
-              // El navegador solo deja sonar después de un toque.
-              beep(1);
-              setSound(true);
+              const next = !sound;
+              soundOn.current = next;
+              setSound(next);
+              // El navegador solo deja sonar después de un toque;
+              // un pitido confirma que quedó prendido.
+              if (next) beep(1);
             }}
+            aria-pressed={sound}
             className={`rounded-xl border px-3 py-2 text-xs font-bold ${
               sound ? "border-[#244D38] bg-[#EDF4E9] text-[#244D38]" : "border-[#eaded3] bg-white"
             }`}
           >
-            🔔 {sound ? t.soundOn : t.sound}
+            {sound ? "🔔" : "🔕"} {sound ? t.soundOn : t.sound}
           </button>
         </div>
       </div>
