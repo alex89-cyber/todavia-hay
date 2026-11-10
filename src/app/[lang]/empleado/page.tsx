@@ -13,6 +13,9 @@ import { hasLocale } from "@/dictionaries";
 import { currentAccount } from "@/lib/auth/server";
 import { admin } from "@/lib/accounts";
 
+import RestaurantTables from "@/components/RestaurantTables";
+import StaffTablesManager from "@/components/StaffTablesManager";
+
 // ==========================================
 // TODAVÍA HAY
 // PANEL DE EMPLEADOS
@@ -239,6 +242,20 @@ async function EmployeeContent({
 
   const es = lang === "es";
 
+  // Meseros y encargados con mesas (Medium y Plus).
+  const tableMemberships = staffMemberships.filter(
+    (item) =>
+      (item.role === "waiter" || item.role === "manager") &&
+      (item.business.plan === "medium" || item.business.plan === "plus"),
+  );
+
+  // Un solo negocio con mesas: las mesas salen directo aquí,
+  // sin tarjeta intermedia.
+  const directTables =
+    staffMemberships.length === 1 && tableMemberships.length === 1
+      ? tableMemberships[0]
+      : null;
+
   return (
     <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6">
 
@@ -276,44 +293,24 @@ async function EmployeeContent({
 
       {/* NEGOCIOS ASIGNADOS */}
 
-      <section className="mt-8">
-        <h2 className="text-xl font-black">
-          Mis establecimientos
-        </h2>
-
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          {staffMemberships.map((item) => (
-            <article
-              key={item.business.id}
-              className="rounded-3xl border border-[#E8DDCF] bg-white p-5"
-            >
-              <div className="text-3xl">
-                🏪
-              </div>
-
-              <h3 className="mt-3 text-lg font-black">
-                {item.business.name}
-              </h3>
-
-              <p className="mt-2 text-sm text-[#806D5D]">
-                Perfil:{" "}
-                {ROLE_NAMES[item.role] ??
-                  item.role}
-              </p>
-
-              <p className="mt-3 text-xs text-gray-500">
-                Tienes acceso únicamente a
-                las funciones autorizadas
-                para este establecimiento.
-              </p>
-            </article>
-          ))}
-        </div>
+      <section className="mt-6 flex flex-wrap gap-2">
+        {staffMemberships.map((item) => (
+          <p
+            key={item.business.id}
+            className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm"
+          >
+            <span aria-hidden="true">🏪</span>
+            <span className="font-black">{item.business.name}</span>
+            <span className="text-[#806D5D]">
+              · {ROLE_NAMES[item.role] ?? item.role}
+            </span>
+          </p>
+        ))}
       </section>
 
       {/* RESUMEN */}
 
-      <section className="mt-8 grid grid-cols-2 gap-3">
+      <section className="mt-6 grid grid-cols-2 gap-3">
         <div className="rounded-2xl bg-[#F5E9DF] p-5">
           <p className="text-sm text-[#806D5D]">
             Pedidos activos
@@ -336,21 +333,37 @@ async function EmployeeContent({
       </section>
 
             
-        {/* ACCESO REAL A MESAS PARA MESEROS Y ENCARGADOS */}
+        {/* MESAS: directo con un solo negocio; si no, una tarjeta por negocio */}
+        {directTables && (
+          <section className="mt-8">
+            <h2 className="text-xl font-black">
+              {es ? "Mesas" : "Tables"}
+            </h2>
+            <StaffTablesManager
+              slug={directTables.business.slug}
+              lang={es ? "es" : "en"}
+            />
+            {directTables.role === "manager" && (
+              <details className="mt-10 rounded-2xl border border-[#eaded3] bg-white p-4">
+                <summary className="cursor-pointer text-sm font-bold text-[#302018]">
+                  {es ? "Agregar o editar mesas" : "Add or edit tables"}
+                </summary>
+                <div className="mt-4">
+                  <RestaurantTables slug={directTables.business.slug} lang={lang} />
+                </div>
+              </details>
+            )}
+          </section>
+        )}
+
+        {!directTables && tableMemberships.length > 0 && (
         <section className="mt-8">
         <h2 className="text-xl font-black">
             Mesas del restaurante
         </h2>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            {staffMemberships
-            .filter(
-                (item) =>
-                (item.role === "waiter" ||
-                    item.role === "manager") &&
-                (item.business.plan === "medium" ||
-                    item.business.plan === "plus"),
-            )
+            {tableMemberships
             .map((item) => (
                 <Link
                 key={item.business.id}
@@ -374,6 +387,7 @@ async function EmployeeContent({
             ))}
         </div>
         </section>
+        )}
 
         {/* COCINA (PLAN PLUS): cocina marca listas, encargado solo ve */}
         {staffMemberships.some(
