@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 
-// "Instalar app": adds the stall page to the home screen.
+// "Instalar app": adds Todavía hay to the home screen (shown on Explorar negocios).
 // - Chrome / Edge / Android: uses the browser's own install prompt
 //   (beforeinstallprompt), so one tap installs.
 // - iPhone / iPad: Safari has no prompt, so the button opens the steps
@@ -33,7 +33,7 @@ const TEXT = {
     step1: "Toca el botón Compartir",
     step1b: "(el cuadro con la flecha hacia arriba, abajo o arriba de la pantalla).",
     step2: "Baja y toca «Agregar a inicio».",
-    step3: "Toca «Agregar». La app queda en tu pantalla de inicio y abre directo en este puesto.",
+    step3: "Toca «Agregar». La app queda en tu pantalla de inicio y abre en Explorar negocios.",
     why: "Así también te llegan los avisos de «Avísame cuando haya».",
     close: "Entendido",
   },
@@ -44,7 +44,7 @@ const TEXT = {
     step1: "Tap the Share button",
     step1b: "(the square with an arrow pointing up, at the bottom or top of the screen).",
     step2: "Scroll down and tap “Add to Home Screen”.",
-    step3: "Tap “Add”. The app lands on your home screen and opens right on this stall.",
+    step3: "Tap “Add”. The app lands on your home screen and opens on Explore businesses.",
     why: "This is also how “Notify me” alerts reach you.",
     close: "Got it",
   },

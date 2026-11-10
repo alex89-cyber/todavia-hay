@@ -29,7 +29,6 @@ import type { PublicSnapshot } from "@/lib/stall";
 import { groupBySection, groupName } from "@/lib/menu-sections";
 
 import { AgentChat } from "./AgentChat";
-import { InstallAppButton } from "./InstallAppButton";
 
 import {
   NotifyButton,
@@ -1177,8 +1176,6 @@ export function PublicStall({
             ? t.open
             : t.closed}
         </span>
-
-        <InstallAppButton lang={lang} />
       </div>
     </div>
   );
