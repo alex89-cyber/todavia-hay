@@ -1733,7 +1733,11 @@ function Reservations({
             </span>
 
             <span className="shrink-0">
-              {r.noShow ? o.noShowStatus : o.reservationStatus[r.status]}
+              {r.noShow
+                ? o.noShowStatus
+                : r.status === "captured" && r.tableTabId
+                  ? o.seatedStatus
+                  : o.reservationStatus[r.status]}
             </span>
           </p>
 

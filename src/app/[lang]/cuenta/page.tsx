@@ -55,6 +55,7 @@ const STATUS: Record<string, string> = {
   held: "Pendiente",
   authorized: "Apartado",
   captured: "Entregado y pagado",
+  seated: "Comió en el negocio",
   voided: "Cancelado",
   expired: "Vencido",
   ready: "Listo",

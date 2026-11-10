@@ -215,6 +215,10 @@ function HoldCard({
   const delivered =
     hold.status === "captured";
 
+  // Comer aquí: el mesero ya lo sentó en su mesa.
+  const seated =
+    hold.status === "seated";
+
   const expired =
     hold.status === "expired";
 
@@ -232,7 +236,11 @@ function HoldCard({
   // TEXTO DEL ESTADO
   // ========================================
 
-  const status = delivered
+  const status = seated
+    ? es
+      ? "¡Bienvenido! Ya estás en tu mesa"
+      : "Welcome! You're at your table"
+    : delivered
     ? es
       ? "Entregado y pagado"
       : "Delivered and paid"
@@ -405,7 +413,7 @@ function HoldCard({
       className={`space-y-3 rounded-3xl border p-5 shadow-sm sm:p-8 ${
         ready
           ? "border-brand bg-brand text-white"
-          : delivered
+          : delivered || seated
             ? "border-green-200 bg-green-50 text-green-900"
             : "border-line bg-surface text-foreground"
       }`}
@@ -425,7 +433,7 @@ function HoldCard({
       {/* ESTADO */}
 
       <p className="text-base font-bold sm:text-xl">
-        {delivered ? "✓ " : ""}
+        {delivered || seated ? "✓ " : ""}
         {status}
       </p>
 
@@ -500,6 +508,14 @@ function HoldCard({
       )}
 
       {/* AVISO DE PAGO */}
+
+      {seated && (
+        <p className="text-sm font-semibold">
+          {es
+            ? "Tu pedido ya está en tu cuenta. Pagas al final con tu mesero."
+            : "Your order is on your bill. Pay your waiter at the end."}
+        </p>
+      )}
 
       {delivered && (
         <p className="text-sm font-semibold">

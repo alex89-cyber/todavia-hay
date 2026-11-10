@@ -181,6 +181,7 @@
     "markReady": "Listo",
     "readyDone": "Le avisamos al cliente que ya está listo",
     "noShowStatus": "no llegó",
+    "seatedStatus": "en mesa",
     "pushOwner": "Avisarme en este teléfono",
     "pushOwnerOn": "Este teléfono recibe avisos"
   },
