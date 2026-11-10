@@ -2,7 +2,7 @@
 import { z } from "zod";
 
 import { currentAccount } from "@/lib/auth/server";
-import { admin } from "@/lib/accounts";
+import { admin, findUserIdByEmail } from "@/lib/accounts";
 import { origin as publicOrigin, sameOrigin } from "@/lib/origin";
 
 import {
@@ -195,6 +195,96 @@ function planRequiredResponse(
 }
 
 // ==========================================
+// VINCULAR UNA CUENTA QUE YA EXISTE
+// ==========================================
+
+async function linkExisting(
+  businessId: string,
+  userId: string,
+  role: StaffRole,
+  plan: BusinessPlan,
+) {
+  const db = admin();
+
+  const {
+    data: current,
+    error: readError,
+  } = await db
+    .from("business_members")
+    .select("role")
+    .eq("business_id", businessId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (readError) {
+    console.error(
+      "Error leyendo personal:",
+      readError.message,
+    );
+
+    return Response.json(
+      {
+        error:
+          "No se pudo asignar el empleado. Intenta otra vez.",
+      },
+      { status: 500 },
+    );
+  }
+
+  if (current?.role === "owner") {
+    return Response.json(
+      {
+        error:
+          "Ese correo es del propietario del negocio.",
+      },
+      { status: 409 },
+    );
+  }
+
+  const { error } = current
+    ? await db
+        .from("business_members")
+        .update({ role })
+        .eq("business_id", businessId)
+        .eq("user_id", userId)
+    : await db
+        .from("business_members")
+        .insert({
+          business_id: businessId,
+          user_id: userId,
+          role,
+        });
+
+  if (error) {
+    console.error(
+      "Error asociando cuenta existente:",
+      error.message,
+    );
+
+    return Response.json(
+      {
+        error:
+          "No se pudo asignar el empleado. Intenta otra vez.",
+      },
+      { status: 500 },
+    );
+  }
+
+  return Response.json(
+    {
+      ok: true,
+      linked: true,
+      message: current
+        ? "Ese empleado ya estaba registrado: se actualizó su perfil."
+        : "Ese correo ya tenía cuenta: se agregó al negocio. Puede entrar con su correo y contraseña de siempre, en Mi panel.",
+      plan,
+      role,
+    },
+    { status: current ? 200 : 201 },
+  );
+}
+
+// ==========================================
 // POST: INVITAR EMPLEADO
 // ==========================================
 
@@ -305,6 +395,43 @@ export async function POST(
   }
 
   // ========================================
+  // ¿EL CORREO YA TIENE CUENTA?
+  // ========================================
+  //
+  // Si ya existe (por ejemplo, ya era cliente
+  // o trabaja en otro negocio), no se manda
+  // invitación: se le da acceso directo y
+  // entra con su correo y contraseña de siempre.
+
+  let existingId: string | null;
+
+  try {
+    existingId = await findUserIdByEmail(email);
+  } catch (error) {
+    console.error(
+      "Error buscando cuenta:",
+      error instanceof Error ? error.message : error,
+    );
+
+    return Response.json(
+      {
+        error:
+          "No se pudo revisar si el correo ya tiene cuenta. Intenta otra vez.",
+      },
+      { status: 500 },
+    );
+  }
+
+  if (existingId) {
+    return linkExisting(
+      access.businessId,
+      existingId,
+      role,
+      plan,
+    );
+  }
+
+  // ========================================
   // ENVIAR INVITACIÓN
   // ========================================
 
@@ -340,7 +467,7 @@ export async function POST(
     return Response.json(
       {
         error: alreadyExists
-          ? "Este correo ya tiene cuenta. La vinculación de usuarios existentes se habilitará después."
+          ? "Este correo ya tiene cuenta, pero no se pudo vincular. Intenta otra vez."
           : "No se pudo enviar la invitación. Revisa la configuración de correo de Supabase.",
       },
       {

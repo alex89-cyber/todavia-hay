@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { admin } from "@/lib/accounts";
+import { admin, findUserIdByEmail } from "@/lib/accounts";
 import { origin as publicOrigin, sameOrigin } from "@/lib/origin";
 import { platformAdmin } from "@/lib/platform-admin";
 
@@ -31,19 +31,6 @@ const NewBusiness = z.object({
 
 function fail(error: string, status: number) {
   return Response.json({ error }, { status });
-}
-
-/** Finds an existing account by email (Supabase has no direct lookup). */
-async function findUserId(email: string): Promise<string | null> {
-  const db = admin();
-  for (let page = 1; page < 50; page++) {
-    const { data, error } = await db.auth.admin.listUsers({ page, perPage: 200 });
-    if (error) throw error;
-    const hit = data.users.find((u) => u.email?.toLowerCase() === email);
-    if (hit) return hit.id;
-    if (data.users.length < 200) return null;
-  }
-  return null;
 }
 
 export async function POST(request: Request) {
@@ -102,7 +89,7 @@ export async function POST(request: Request) {
   let userId: string | null = null;
   let invited = false;
   try {
-    userId = await findUserId(ownerEmail);
+    userId = await findUserIdByEmail(ownerEmail);
     if (!userId) {
       const { data, error } = await db.auth.admin.inviteUserByEmail(ownerEmail, {
         redirectTo: `${publicOrigin(request)}/api/auth/callback?next=${encodeURIComponent(panel)}`,
