@@ -31,7 +31,9 @@ export type HeldOrder = {
   pickupBy: string;
 
   // Estado real registrado en Supabase.
-  status: ReservationStatus;
+  // "seated": apartado "comer aquí" que el mesero ya sentó en una
+  // mesa (en la base es captured, pero todavía no se cobra).
+  status: ReservationStatus | "seated";
 
   stage: KitchenStage;
   needsConfirmation: boolean;
@@ -86,7 +88,10 @@ export function heldOrder(
     pickupMode: r.pickupMode,
     pickupAt: r.pickupAt,
     pickupBy: r.pickupBy,
-    status: r.status,
+    status:
+      r.status === "captured" && r.tableTabId
+        ? "seated"
+        : r.status,
 
     stage: kitchenStage(r, p, now),
 

@@ -127,7 +127,7 @@ export type AccountOrder = {
 export async function accountOrders(userId: string, limit = 10): Promise<AccountOrder[]> {
   const { data, error } = await admin()
     .from("reservations")
-    .select("id, status, total_cents, created_at, pickup_at, order_number, businesses(slug, name)")
+    .select("id, status, total_cents, created_at, pickup_at, order_number, table_tab_id, businesses(slug, name)")
     .eq("customer_id", userId)
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -140,7 +140,8 @@ export async function accountOrders(userId: string, limit = 10): Promise<Account
             id: r.id as string,
             slug: b.slug,
             business: b.name,
-            status: r.status as string,
+            // Comer aquí ya sentado en su mesa: no es "entregado y pagado".
+            status: r.status === "captured" && r.table_tab_id ? "seated" : (r.status as string),
             totalCents: r.total_cents as number,
             createdAt: r.created_at as string,
             pickupAt: (r.pickup_at as string | null) ?? null,

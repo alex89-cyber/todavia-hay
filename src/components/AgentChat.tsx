@@ -152,6 +152,11 @@ function statusText(
   const es = lang === "es";
 
   switch (status) {
+    case "seated":
+      return es
+        ? "¡Bienvenido!"
+        : "Welcome!";
+
     case "captured":
       return es
         ? "Entregado y pagado"
@@ -832,6 +837,10 @@ export function AgentChat({
               const delivered =
                 status === "captured";
 
+              // Comer aquí: el mesero ya lo sentó en su mesa.
+              const seated =
+                status === "seated";
+
               const active =
                 status === "authorized";
 
@@ -885,7 +894,7 @@ export function AgentChat({
 
                         <span
                           className={`rounded-full px-3 py-1 text-xs font-bold ${
-                            delivered
+                            delivered || seated
                               ? "bg-green-100 text-green-800"
                               : expired || cancelled
                                 ? "bg-red-100 text-red-800"
@@ -993,7 +1002,11 @@ export function AgentChat({
 
                       <div className="rounded-xl border border-line p-3">
                         <p className="text-sm font-bold">
-                          {delivered
+                          {seated
+                            ? es
+                              ? "✓ Ya estás en tu mesa. Pagas al final con tu mesero."
+                              : "✓ You're at your table. Pay your waiter at the end."
+                            : delivered
                             ? es
                               ? "✓ Pedido entregado y pagado"
                               : "✓ Order delivered and paid"
