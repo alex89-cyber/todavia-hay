@@ -64,11 +64,12 @@ async function BusinessDirectory({
     <main className="mx-auto w-full max-w-6xl flex-1 px-5 py-12">
       <header className="mb-10">
         <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Con sesión, regresa a Mi cuenta; sin sesión, al inicio. */}
           <Link
-            href={`/${lang}`}
+            href={me ? `/${lang}/cuenta` : `/${lang}`}
             className="text-sm font-bold text-[#244D38] underline"
           >
-            ← Todavía Hay
+            {me ? (es ? "← Mi cuenta" : "← My account") : "← Todavía Hay"}
           </Link>
 
           <div className="flex flex-wrap items-center gap-2">

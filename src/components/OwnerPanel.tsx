@@ -1678,9 +1678,6 @@ function Reservations({
               {r.confirmedAt ? o.confirmedNote : fill(o.confirmPending, { time: at(prepStartsAt(r, pickup).toISOString()) })}
             </p>
           )}
-          {r.status === "authorized" && r.pickupAt && (
-            <p className="mt-1 text-xs text-muted">{fill(o.chargeAt, { time: at(r.pickupBy) })}</p>
-          )}
 
           {stamps(r)}
 
