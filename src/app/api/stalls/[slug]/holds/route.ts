@@ -42,12 +42,14 @@ export async function POST(request: Request, ctx: RouteContext<"/api/stalls/[slu
   if (!parsed.success) return Response.json({ error: "bad_request" }, { status: 400 });
   const a = parsed.data;
   if (!(await store.get(slug))) return Response.json({ error: "not_found" }, { status: 404 });
-  // Only the browser that paid for an order, or the account that made it, can act on it.
-  if (!holdIds((await cookies()).get(HOLDS_COOKIE)?.value).includes(a.id)) {
-    const me = await currentAccount();
-    const r = me ? await store.getReservation(slug, a.id) : null;
-    if (!me || r?.customerId !== me.id) return Response.json({ error: "not_yours" }, { status: 403 });
-  }
+  // Con sesión, solo la cuenta que lo hizo. Sin sesión, solo el navegador
+  // que hizo un pedido sin cuenta.
+  const me = await currentAccount();
+  const r = await store.getReservation(slug, a.id);
+  const mine = me
+    ? r?.customerId === me.id
+    : !r?.customerId && holdIds((await cookies()).get(HOLDS_COOKIE)?.value).includes(a.id);
+  if (!mine) return Response.json({ error: "not_yours" }, { status: 403 });
 
   if (a.action === "confirm") {
     const r = await confirmPickup(slug, a.id);

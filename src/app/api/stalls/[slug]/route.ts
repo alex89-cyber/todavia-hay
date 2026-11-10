@@ -286,7 +286,7 @@ const settings = z.object({
       slotMinutes: z.number().int().min(5).max(120),
       maxPerSlot: z.number().int().min(1).max(500).nullable(),
       toleranceMinutes: z.number().int().min(0).max(240),
-      dineIn: z.boolean().default(false),
+      dineIn: z.boolean().default(true),
       dineInToleranceMinutes: z.number().int().min(0).max(120).default(15),
     })
     .optional(),
@@ -310,6 +310,7 @@ const Action = z.discriminatedUnion(
       method: z.enum([
         "cash",
         "card",
+        "transfer",
       ]),
 
       customerPhone: z

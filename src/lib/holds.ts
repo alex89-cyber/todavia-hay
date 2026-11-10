@@ -143,17 +143,15 @@ export function heldOrders(
 
   return s.reservations
     .filter((r) => {
-      const belongsToBrowser =
-        owned.has(r.id);
+      // Con sesión: solo los pedidos de esa cuenta,
+      // aunque el celular guarde los de otra.
+      if (customerId !== null) {
+        return r.customerId === customerId;
+      }
 
-      const belongsToAccount =
-        customerId !== null &&
-        r.customerId === customerId;
-
-      return (
-        belongsToBrowser ||
-        belongsToAccount
-      );
+      // Sin sesión: los que se hicieron sin cuenta
+      // desde este navegador.
+      return owned.has(r.id) && !r.customerId;
     })
     .filter(
       (r) =>

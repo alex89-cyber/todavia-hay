@@ -23,7 +23,7 @@ export const DEFAULT_PICKUP: PickupSettings = {
   slotMinutes: 15,
   maxPerSlot: null,
   toleranceMinutes: 20,
-  dineIn: false,
+  dineIn: true,
   dineInToleranceMinutes: 15,
 };
 
@@ -98,7 +98,8 @@ export function pickupSettings(
       240,
     ),
 
-    dineIn: p.dineIn === true,
+    // Encendido por default; solo se apaga si el dueño lo desactiva.
+    dineIn: p.dineIn !== false,
 
     dineInToleranceMinutes: whole(
       p.dineInToleranceMinutes,

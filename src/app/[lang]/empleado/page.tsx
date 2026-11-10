@@ -262,7 +262,7 @@ async function EmployeeContent({
         </div>
 
         <form
-          action={`/api/auth/signout?next=/${lang}/login`}
+          action={`/api/auth/signout?next=/${lang}`}
           method="post"
         >
           <button

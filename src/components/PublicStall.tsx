@@ -22,7 +22,6 @@ import type { Dictionary } from "@/dictionaries";
 import {
   clock,
   fill,
-  minutesSince,
   money,
 } from "@/lib/format";
 
@@ -692,9 +691,6 @@ export function PublicStall({
   const [snap, setSnap] =
     useState(initial);
 
-  const [now, setNow] =
-    useState(() => Date.now());
-
   const es = lang === "es";
 
   const settings = snap.settings;
@@ -974,10 +970,6 @@ export function PublicStall({
       } catch {
         // Conservar últimos datos.
       }
-
-      if (alive) {
-        setNow(Date.now());
-      }
     };
 
     const id = setInterval(
@@ -1008,11 +1000,6 @@ export function PublicStall({
       }
     }
   }, [snap]);
-
-  const mins = minutesSince(
-    snap.updatedAt,
-    now,
-  );
 
   const available =
     snap.dishes.filter(
@@ -1189,19 +1176,6 @@ export function PublicStall({
           {snap.isOpen
             ? t.open
             : t.closed}
-        </span>
-
-        <span
-          suppressHydrationWarning
-          className="inline-flex items-center gap-2 rounded-full border border-line px-4 py-2 text-sm"
-          style={{ color: headerTextColor }}
-        >
-          ◷{" "}
-          {mins === 0
-            ? t.updatedNow
-            : fill(t.updated, {
-                n: mins,
-              })}
         </span>
 
         <InstallAppButton lang={lang} />
