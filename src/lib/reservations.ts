@@ -61,6 +61,7 @@ export function mergeLines(
   lines: OrderLine[],
 ): OrderLine[] {
   const quantities = new Map<string, number>();
+  const notes = new Map<string, string[]>();
 
   for (const line of lines) {
     quantities.set(
@@ -68,13 +69,18 @@ export function mergeLines(
       (quantities.get(line.dishId) ?? 0) +
         line.qty,
     );
+
+    const note = line.note?.trim();
+    if (note) {
+      notes.set(line.dishId, [...(notes.get(line.dishId) ?? []), note]);
+    }
   }
 
   return [...quantities].map(
-    ([dishId, qty]) => ({
-      dishId,
-      qty,
-    }),
+    ([dishId, qty]) => {
+      const note = notes.get(dishId)?.join("; ").slice(0, 140);
+      return note ? { dishId, qty, note } : { dishId, qty };
+    },
   );
 }
 
@@ -175,8 +181,23 @@ export async function startReservation(
       },
     );
 
+    // Indicaciones por platillo ("sin cebolla") para la comanda.
+    const withNotes = lines.filter((l) => l.note);
+    if (withNotes.length) {
+      // Si falla (ej. falta la migración 0025), el pedido sigue.
+      await store
+        .setLineNotes(state.slug, result.reservation.id, withNotes)
+        .catch((error) =>
+          console.error(
+            "No se guardaron las indicaciones:",
+            error instanceof Error ? error.message : error,
+          ),
+        );
+    }
+
     result.reservation = {
       ...result.reservation,
+      lines,
       pickupMode: input.pickup.mode,
       pickupAt,
       customerId,

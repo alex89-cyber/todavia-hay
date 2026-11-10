@@ -809,6 +809,17 @@ export const memoryStore: StallStore & { reset(slug: string): Promise<StallState
     return true;
   },
 
+  async setLineNotes(slug, id, lines) {
+    const s = must(slug);
+    const r = reservation(s, id);
+    if (!r) return;
+    const notes = new Map(lines.map((l) => [l.dishId, l.note?.trim() || null]));
+    r.lines = r.lines.map((l) =>
+      notes.has(l.dishId) ? { ...l, note: notes.get(l.dishId) } : l,
+    );
+    save(s);
+  },
+
   async noShow(slug, id) {
     const s = must(slug);
     const r = reservation(s, id);

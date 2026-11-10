@@ -109,6 +109,7 @@ type ReservationRow = {
   reservation_items: {
     dish_id: string;
     qty: number;
+    note?: string | null;
   }[];
 };
 
@@ -120,6 +121,8 @@ const RESERVATION_COLS_BASE =
   "id, customer_name, total_cents, status, pickup_by, created_at, payer_id, reservation_items(dish_id, qty)";
 
 const RESERVATION_COLS = [
+  // 0025: indicaciones por platillo.
+  `${RESERVATION_COLS_BASE.replace("reservation_items(dish_id, qty)", "reservation_items(dish_id, qty, note)")}, pickup_code, order_number, pickup_mode, pickup_at, confirmed_at, ready_at, no_show, confirm_asked_at, prep_alerted_at, customer_id, dine_in, party_size, table_tab_id`,
   `${RESERVATION_COLS_BASE}, pickup_code, order_number, pickup_mode, pickup_at, confirmed_at, ready_at, no_show, confirm_asked_at, prep_alerted_at, customer_id, dine_in, party_size, table_tab_id`,
   `${RESERVATION_COLS_BASE}, pickup_code, order_number, pickup_mode, pickup_at, confirmed_at, ready_at, no_show, confirm_asked_at, prep_alerted_at, customer_id`,
   `${RESERVATION_COLS_BASE}, pickup_code, order_number, pickup_mode, pickup_at, confirmed_at, ready_at, no_show, confirm_asked_at, prep_alerted_at`,
@@ -139,7 +142,7 @@ async function withPickupCode<
 
   for (const cols of RESERVATION_COLS.slice(1)) {
     const missing =
-      /pickup_code|order_number|pickup_mode|pickup_at|confirmed_at|ready_at|no_show|confirm_asked_at|prep_alerted_at|customer_id|dine_in|party_size|table_tab_id/;
+      /pickup_code|order_number|pickup_mode|pickup_at|confirmed_at|ready_at|no_show|confirm_asked_at|prep_alerted_at|customer_id|dine_in|party_size|table_tab_id|note/;
 
     if (!missing.test(result.error?.message ?? "")) {
       break;
@@ -189,6 +192,7 @@ const toReservation = (
   lines: r.reservation_items.map((line) => ({
     dishId: line.dish_id,
     qty: line.qty,
+    ...(line.note ? { note: line.note } : {}),
   })),
 });
 
@@ -1033,6 +1037,21 @@ export const supabaseStore: StallStore = {
         "release",
       ),
     );
+  },
+
+  async setLineNotes(slug, id, lines) {
+    await must(slug);
+
+    for (const line of lines) {
+      check(
+        await db()
+          .from("reservation_items")
+          .update({ note: line.note?.trim().slice(0, 140) || null })
+          .eq("reservation_id", id)
+          .eq("dish_id", line.dishId),
+        "line notes",
+      );
+    }
   },
 
   async noShow(slug, id) {

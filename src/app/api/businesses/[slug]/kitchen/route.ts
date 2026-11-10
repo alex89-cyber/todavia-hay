@@ -147,7 +147,7 @@ async function snapshot(
         status: stage === "ready" ? "ready" : "pending",
         since: prepStartsAt(r, pickup).toISOString(),
         readyAt: r.readyAt,
-        items: lines.map((l) => ({ name: name(l.dishId), qty: l.qty, note: null, cancelled: false })),
+        items: lines.map((l) => ({ name: name(l.dishId), qty: l.qty, note: l.note ?? null, cancelled: false })),
       });
     }
   }

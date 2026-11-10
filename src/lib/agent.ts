@@ -84,6 +84,8 @@ export type AgentReservation = {
   lines: {
     name: string;
     qty: number;
+    /** Indicación del cliente, ej. "sin cebolla". */
+    note?: string | null;
   }[];
 };
 
@@ -831,6 +833,10 @@ function instructions(
     ),
   );
 
+  const ingredientName = new Map(
+    state.ingredients.map((i) => [i.id, i.name]),
+  );
+
   const menuLine = (dish: StallState["dishes"][number]) => {
         const remaining =
           state.isOpen
@@ -844,11 +850,16 @@ function instructions(
           dish.priceCents / 100
         ).toFixed(2);
 
+        const ingredients = dish.recipe
+          .map((r) => ingredientName.get(r.ingredientId))
+          .filter(Boolean)
+          .join(", ");
+
         return `- id=${dish.id} | ${dish.nameEs} / ${dish.nameEn} | $${price} ${state.currency} | ${
           remaining > 0
             ? `about ${remaining} left`
             : "SOLD OUT"
-        }`;
+        }${ingredients ? ` | ingredients: ${ingredients}` : ""}`;
   };
 
   // Agrupado por sección, en el orden del dueño.
@@ -899,6 +910,10 @@ ORDER RULES:
 - When the customer asks what there is, list the menu grouped by its sections (the "##" headings), in that order.
 - Never invent prices or availability.
 - Maximum quantity is 10 per dish.
+- INGREDIENTS: after the customer picks dishes, ask once if they go "con todo" (with everything). Show each chosen dish with its ingredient list from the live menu, e.g. "Tacos dorados: tortilla, carne, cebolla, cilantro. ¿Los quieres con todo o les quitamos algo?".
+- If the customer removes something, save it in that item's "note" as "sin X" (e.g. "sin cebolla, sin cilantro"). Only remove ingredients that are in that dish's list; you cannot add extra ingredients.
+- If the order has several units of a dish and only some change, say it in the note (e.g. "1 sin cebolla").
+- If they want everything, leave "note" empty. Include notes in the summary before confirming.
 - Ask for pickup preference only once.
 - If the customer selects ASAP, do not show scheduled hours.
 - If the customer wants scheduled pickup, show available hours.
@@ -1179,6 +1194,15 @@ export async function chat(
                 .int()
                 .min(1)
                 .max(10),
+
+            note:
+              z.string()
+                .trim()
+                .max(140)
+                .optional()
+                .describe(
+                  'Ingredients to remove, e.g. "sin cebolla". Omit if the dish goes with everything.',
+                ),
           }),
         )
           .min(1)
@@ -1486,6 +1510,9 @@ export async function chat(
 
                   qty:
                     item.qty,
+
+                  note:
+                    item.note || null,
                 }),
               ),
 
@@ -1608,6 +1635,9 @@ export async function chat(
 
                 qty:
                   line.qty,
+
+                note:
+                  line.note ?? null,
               }),
             ),
       };

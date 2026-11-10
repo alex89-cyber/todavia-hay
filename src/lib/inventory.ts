@@ -110,6 +110,8 @@ export function menuAvailability(
 export type OrderLine = {
   dishId: string;
   qty: number;
+  /** Indicación del cliente, ej. "sin cebolla" (apartados). */
+  note?: string | null;
 };
 
 /**
