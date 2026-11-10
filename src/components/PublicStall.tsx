@@ -1786,6 +1786,15 @@ export function PublicStall({
         t={t}
       />
 
+      {/* VOLVER A LA APP COMPLETA */}
+
+      <a
+        href={`/${lang}/negocios`}
+        className="inline-block text-sm font-bold text-brand hover:underline"
+      >
+        ← {es ? "Explorar negocios" : "Explore businesses"}
+      </a>
+
       {/* ENCABEZADO DEL NEGOCIO */}
 
       <header className="relative overflow-hidden rounded-[2rem] border border-line bg-surface shadow-sm">
