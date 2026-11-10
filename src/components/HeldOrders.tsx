@@ -553,20 +553,6 @@ function HoldCard({
           </div>
         )}
 
-      {/* LÍMITE PARA RECOGER */}
-
-      {active && (
-        <p className="text-xs">
-          {fill(
-            p.pickupChargeNote,
-            {
-              time: at(
-                hold.pickupBy,
-              ),
-            },
-          )}
-        </p>
-      )}
     </div>
   );
 }

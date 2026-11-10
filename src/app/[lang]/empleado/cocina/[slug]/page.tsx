@@ -87,7 +87,16 @@ async function KitchenContent({ params }: Props) {
         <h1 className="mt-2 text-3xl font-black text-[#302018]">
           {es ? "Comandas" : "Tickets"}
         </h1>
-        <p className="mt-2 text-sm text-gray-600">{access.businessName}</p>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-gray-600">{access.businessName}</p>
+          {access.role === "kitchen" && (
+            <form action={`/api/auth/signout?next=/${lang}`} method="post">
+              <button type="submit" className="text-sm font-bold text-[#a3341f] hover:underline">
+                {es ? "Cerrar sesión" : "Sign out"}
+              </button>
+            </form>
+          )}
+        </div>
       </header>
 
       <KitchenBoard slug={slug} lang={es ? "es" : "en"} />

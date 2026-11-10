@@ -189,7 +189,7 @@ export function OwnerPanel({
           n: view.loyalty.stampsPerReward,
         });
 
-  async function charge(method: "cash" | "card") {
+  async function charge(method: "cash" | "card" | "transfer") {
     if (!lines.length || busy) return;
 
     if (phone.trim() && !phoneCardId(phone)) {
@@ -904,7 +904,7 @@ export function OwnerPanel({
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-2 sm:gap-3">
                   <button
                     type="button"
                     onClick={() => charge("cash")}
@@ -921,6 +921,15 @@ export function OwnerPanel({
                     className="rounded-2xl bg-brand-strong py-4 text-lg font-bold text-white active:scale-[0.98] disabled:opacity-50"
                   >
                     {o.card}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => charge("transfer")}
+                    disabled={busy}
+                    className="rounded-2xl bg-brand-strong py-4 text-lg font-bold text-white active:scale-[0.98] disabled:opacity-50"
+                  >
+                    {o.transfer}
                   </button>
                 </div>
               </>

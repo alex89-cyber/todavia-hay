@@ -58,6 +58,18 @@ type Turn = ChatMessage & {
 
 type OrderStatus = HeldOrder["status"];
 
+/** ¿El asistente preguntó si es para llevar o para comer aquí? */
+function asksOrderType(text: string) {
+  const t = text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  return (
+    (/para llevar/.test(t) && /comer (aqui|en el)/.test(t)) ||
+    (/to go/.test(t) && /(eat here|dine in)/.test(t))
+  );
+}
+
 type ChatResponse = {
   reply?: string;
   reservation?: AgentReservation;
@@ -1021,6 +1033,36 @@ export function AgentChat({
                           className="mt-2 block w-full rounded-full bg-brand py-3 text-center font-bold text-white"
                         >
                           {p.chatLogin}
+                        </button>
+                      </div>
+                    )}
+
+                  {/* ======================
+                      PARA LLEVAR O COMER AQUÍ
+                  ====================== */}
+
+                  {message.role === "assistant" &&
+                    index === turns.length - 1 &&
+                    !busy &&
+                    asksOrderType(message.content) && (
+                      <div className="flex w-full max-w-[85%] flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void send(es ? "Para llevar" : "To go")
+                          }
+                          className="rounded-full bg-brand px-3 py-1.5 text-sm font-semibold text-white"
+                        >
+                          🛍️ {es ? "Para llevar" : "To go"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void send(es ? "Para comer aquí" : "To eat here")
+                          }
+                          className="rounded-full bg-brand px-3 py-1.5 text-sm font-semibold text-white"
+                        >
+                          🍽️ {es ? "Comer aquí" : "Eat here"}
                         </button>
                       </div>
                     )}
