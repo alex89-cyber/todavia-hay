@@ -281,23 +281,31 @@ export function OwnerPanel({
         <div className="mx-auto flex w-full max-w-screen-2xl flex-col gap-6">
           <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-center">
             <div className="flex min-w-0 items-center gap-4 sm:gap-6">
+              
               <div className="relative flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-[#ead4bc] bg-[#fff4e4] shadow-sm sm:size-28">
-                {logoFailed ? (
-                  <span className="text-2xl font-black text-brand">
-                    BDL
-                  </span>
-                ) : (
+                {view.settings?.logoUrl && !logoFailed ? (
                   <Image
-                    src={view.settings?.logoUrl || "/logo-birria-dona-lupe.png"}
+                    src={view.settings.logoUrl}
                     alt={`Logo de ${view.name}`}
                     fill
                     sizes="(min-width: 640px) 112px, 80px"
                     className="object-contain p-1"
                     onError={() => setLogoFailed(true)}
-                    unoptimized={Boolean(view.settings?.logoUrl)}
+                    unoptimized
                   />
+                ) : (
+                  <span className="text-center text-2xl font-black text-[#a3341f]">
+                    {view.name
+                      .trim()
+                      .split(/\s+/)
+                      .slice(0, 2)
+                      .map((word) => word.charAt(0))
+                      .join("")
+                      .toUpperCase() || "🍽️"}
+                  </span>
                 )}
               </div>
+
 
               <div className="min-w-0">
                 <p className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-[#a63822]">
