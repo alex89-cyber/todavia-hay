@@ -10,7 +10,7 @@ import { createClient } from "@supabase/supabase-js";
 import { CashUpDashboard } from "@/components/cashup/CashUpDashboard";
 import FinanceOverview from "@/components/cashup/FinanceOverview";
 import { RefreshButton } from "@/components/cashup/RefreshButton";
-import { OwnerLogin } from "@/components/OwnerLogin";
+import { PanelNoAccess } from "@/components/PanelNoAccess";
 import { getDictionary, hasLocale } from "@/dictionaries";
 import { isOwner } from "@/lib/owner-auth";
 import {
@@ -361,7 +361,7 @@ async function Report({
   // Never load private sales until owner authentication
   // has been verified.
   if (!(await isOwner(slug))) {
-    return <OwnerLogin stallName={state.name} t={t} />;
+    return <PanelNoAccess lang={lang} stallName={state.name} back={`/${lang}/panel/${slug}/corte`} />;
   }
 
   const es = lang === "es";
