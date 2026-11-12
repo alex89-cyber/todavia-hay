@@ -1,8 +1,28 @@
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { connection } from "next/server";
+import { Suspense } from "react";
+
+// ==========================================
+// TODAVÍA HAY
+// TÉRMINOS Y CONDICIONES
+// ==========================================
+//
+// Tres tipos de usuarios:
+// - customer: clientes
+// - employee: empleados
+// - owner: propietarios
+//
+// Compatible con Next.js 16.
+// La página dinámica utiliza Suspense y
+// connection() para evitar problemas de
+// prerenderizado durante el build.
+//
+// ==========================================
 
 type Lang = "es" | "en";
+
 type Role = "customer" | "employee" | "owner";
 
 type Section = {
@@ -10,14 +30,18 @@ type Section = {
   paragraphs: string[];
 };
 
-const LEGAL = {
-  version: "2026-11-12",
-
-  // COMPLETAR ANTES DE PUBLICAR
-  operator: "[NOMBRE O RAZÓN SOCIAL]",
-  email: "[CORREO DE CONTACTO LEGAL]",
-  address: "[DOMICILIO DEL RESPONSABLE]",
+type PageProps = {
+  params: Promise<{
+    lang: string;
+    role: string;
+  }>;
 };
+
+const LEGAL_VERSION = "2026-11-12";
+
+// ==========================================
+// CONDICIONES COMUNES
+// ==========================================
 
 const COMMON_ES: Section[] = [
   {
@@ -79,12 +103,16 @@ const COMMON_ES: Section[] = [
   {
     title: "Modificaciones de los términos",
     paragraphs: [
-        "Todavía Hay podrá actualizar estos términos cuando existan cambios en las funcionalidades, condiciones del servicio o disposiciones legales aplicables.",
-        "Los cambios importantes se comunicarán mediante la plataforma o los canales de contacto disponibles.",
-        "Cuando corresponda, se solicitará una nueva aceptación de los términos actualizados.",
+      "Todavía Hay podrá actualizar estos términos cuando existan cambios en las funcionalidades, condiciones del servicio o disposiciones legales aplicables.",
+      "Los cambios importantes se comunicarán mediante la plataforma o los canales de contacto disponibles.",
+      "Cuando corresponda, se solicitará una nueva aceptación de los términos actualizados.",
     ],
-    },
+  },
 ];
+
+// ==========================================
+// TÉRMINOS PARA CLIENTES
+// ==========================================
 
 const CUSTOMER_ES: Section[] = [
   {
@@ -135,6 +163,10 @@ const CUSTOMER_ES: Section[] = [
   },
 ];
 
+// ==========================================
+// TÉRMINOS PARA EMPLEADOS
+// ==========================================
+
 const EMPLOYEE_ES: Section[] = [
   {
     title: "Acceso por invitación",
@@ -176,6 +208,10 @@ const EMPLOYEE_ES: Section[] = [
     ],
   },
 ];
+
+// ==========================================
+// TÉRMINOS PARA PROPIETARIOS
+// ==========================================
 
 const OWNER_ES: Section[] = [
   {
@@ -252,46 +288,77 @@ const OWNER_ES: Section[] = [
   },
 ];
 
+// ==========================================
+// INFORMACIÓN EN INGLÉS
+// ==========================================
+
 const EN_INTRO: Record<Role, string> = {
   customer:
     "This document governs customer access to Todavía Hay. Before publication, the complete English version must be reviewed and approved.",
+
   employee:
     "This document governs employee access to Todavía Hay. Before publication, the complete English version must be reviewed and approved.",
+
   owner:
     "This document governs restaurant owner access to Todavía Hay. Before publication, the complete English version must be reviewed and approved.",
 };
 
-export default async function TermsPage({
+// ==========================================
+// VALIDACIONES
+// ==========================================
+
+function isLang(value: string): value is Lang {
+  return value === "es" || value === "en";
+}
+
+function isRole(value: string): value is Role {
+  return (
+    value === "customer" ||
+    value === "employee" ||
+    value === "owner"
+  );
+}
+
+// ==========================================
+// CONTENIDO DINÁMICO
+// ==========================================
+
+async function TermsContent({
   params,
-}: {
-  params: Promise<{
-    lang: string;
-    role: string;
-  }>;
-}) {
+}: PageProps) {
+  // IMPORTANTE:
+  // En Next.js 16 esta llamada dentro de
+  // Suspense permite renderizar la ruta de
+  // forma dinámica durante las solicitudes.
+  await connection();
+
   const { lang, role } = await params;
 
-  if (
-    (lang !== "es" && lang !== "en") ||
-    !["customer", "employee", "owner"].includes(role)
-  ) {
+  if (!isLang(lang) || !isRole(role)) {
     notFound();
   }
 
-  const language = lang as Lang;
-  const userRole = role as Role;
+  const language: Lang = lang;
+  const userRole: Role = role;
 
   const titles: Record<Role, string> = {
-    customer: "Términos y condiciones para clientes",
-    employee: "Condiciones de uso para empleados",
-    owner: "Términos de servicio para restaurantes",
+    customer:
+      "Términos y condiciones para clientes",
+
+    employee:
+      "Condiciones de uso para empleados",
+
+    owner:
+      "Términos de servicio para restaurantes",
   };
 
   const descriptions: Record<Role, string> = {
     customer:
       "Condiciones aplicables a quienes consultan restaurantes, crean cuentas y realizan pedidos.",
+
     employee:
       "Reglas aplicables al personal autorizado por los restaurantes.",
+
     owner:
       "Condiciones de uso y contratación de las herramientas de administración.",
   };
@@ -310,19 +377,28 @@ export default async function TermsPage({
 
   return (
     <main className="mx-auto w-full max-w-4xl px-5 py-10 sm:py-14">
+
+      {/* REGRESAR */}
+
       <Link
         href={`/${language}`}
         className="text-sm font-semibold text-brand hover:underline"
       >
-        ← {language === "es"
+        ←{" "}
+        {language === "es"
           ? "Volver a Todavía Hay"
           : "Back to Todavía Hay"}
       </Link>
 
+      {/* CONTENEDOR */}
+
       <div className="mt-8 rounded-3xl border border-line bg-surface p-6 sm:p-10">
+
         <p className="text-xs font-bold uppercase tracking-widest text-brand">
           Todavía Hay · Legal
         </p>
+
+        {/* TÍTULO */}
 
         <h1 className="mt-3 text-3xl font-black leading-tight">
           {language === "es"
@@ -330,32 +406,46 @@ export default async function TermsPage({
             : "Terms of Use"}
         </h1>
 
+        {/* DESCRIPCIÓN */}
+
         <p className="mt-4 text-muted">
           {language === "es"
             ? descriptions[userRole]
             : EN_INTRO[userRole]}
         </p>
 
+        {/* VERSIÓN */}
+
         <div className="mt-5 flex flex-wrap gap-3 text-xs text-muted">
           <span className="rounded-full border border-line px-3 py-2">
-            Versión: {LEGAL.version}
+            {language === "es"
+              ? "Versión"
+              : "Version"}
+            : {LEGAL_VERSION}
           </span>
+
           <span className="rounded-full border border-line px-3 py-2">
             México
           </span>
         </div>
 
+        {/* CONTENIDO EN INGLÉS */}
+
         {language === "en" ? (
           <div className="mt-8 rounded-xl border border-amber-300 bg-amber-50 p-5 text-amber-900">
+
             <p className="font-bold">
               English version pending
             </p>
+
             <p className="mt-2 text-sm">
-              The complete English legal text has
-              not yet been approved. Please do not
-              accept this incomplete translation as
+              The complete English legal text
+              has not yet been approved.
+              Please do not accept this
+              incomplete translation as
               a final agreement.
             </p>
+
             <Link
               href={`/es/legal/terminos/${userRole}`}
               className="mt-3 inline-block font-semibold underline"
@@ -365,18 +455,26 @@ export default async function TermsPage({
           </div>
         ) : (
           <>
-            
+
+            {/* SECCIONES LEGALES */}
 
             <div className="mt-8 space-y-8">
+
               {sections.map((section, index) => (
-                <section key={`${userRole}-${index}`}>
+                <section
+                  key={`${userRole}-${index}`}
+                >
                   <h2 className="text-xl font-bold">
                     {index + 1}. {section.title}
                   </h2>
 
                   <div className="mt-3 space-y-3">
+
                     {section.paragraphs.map(
-                      (paragraph, paragraphIndex) => (
+                      (
+                        paragraph,
+                        paragraphIndex,
+                      ) => (
                         <p
                           key={paragraphIndex}
                           className="leading-7 text-foreground"
@@ -385,20 +483,25 @@ export default async function TermsPage({
                         </p>
                       ),
                     )}
+
                   </div>
                 </section>
               ))}
+
             </div>
 
+            {/* AVISO DE PRIVACIDAD */}
+
             <div className="mt-10 rounded-2xl border border-line bg-background p-5">
+
               <h2 className="font-bold">
                 Aviso de privacidad
               </h2>
 
               <p className="mt-2 text-sm leading-6 text-muted">
                 Consulta cómo se recopilan,
-                utilizan y protegen los datos
-                personales en Todavía Hay.
+                utilizan y protegen los
+                datos personales en Todavía Hay.
               </p>
 
               <Link
@@ -407,10 +510,43 @@ export default async function TermsPage({
               >
                 Consultar aviso de privacidad
               </Link>
+
             </div>
+
           </>
         )}
+
       </div>
     </main>
+  );
+}
+
+// ==========================================
+// PÁGINA PRINCIPAL
+// ==========================================
+//
+// Suspense permite que Next.js renderice
+// el contenido dinámico sin bloquear el
+// prerenderizado del documento completo.
+//
+// ==========================================
+
+export default function TermsPage({
+  params,
+}: PageProps) {
+  return (
+    <Suspense
+      fallback={
+        <main className="mx-auto w-full max-w-4xl px-5 py-10 sm:py-14">
+          <div className="rounded-3xl border border-line bg-surface p-8">
+            <div className="h-7 w-64 max-w-full animate-pulse rounded-lg bg-gray-200" />
+            <div className="mt-5 h-4 w-full animate-pulse rounded-lg bg-gray-200" />
+            <div className="mt-3 h-4 w-3/4 animate-pulse rounded-lg bg-gray-200" />
+          </div>
+        </main>
+      }
+    >
+      <TermsContent params={params} />
+    </Suspense>
   );
 }
