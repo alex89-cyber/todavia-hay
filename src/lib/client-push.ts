@@ -23,8 +23,20 @@ export async function subscribePush(vapidKey: string): Promise<PushSubscriptionJ
   const reg = await navigator.serviceWorker.register("/sw.js");
   await navigator.serviceWorker.ready;
   if ((await Notification.requestPermission()) !== "granted") return "denied";
-  const sub =
-    (await reg.pushManager.getSubscription()) ??
-    (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: toKey(vapidKey) }));
+  const key = toKey(vapidKey);
+  let sub = await reg.pushManager.getSubscription();
+  // Si se suscribió con otras llaves (cambiaron en el servidor), esa
+  // suscripción ya no recibe avisos: se cambia por una nueva.
+  if (sub && !sameKey(sub.options.applicationServerKey, key)) {
+    await sub.unsubscribe().catch(() => false);
+    sub = null;
+  }
+  sub ??= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
   return sub.toJSON();
+}
+
+function sameKey(current: ArrayBuffer | null | undefined, wanted: Uint8Array) {
+  if (!current) return false;
+  const a = new Uint8Array(current);
+  return a.length === wanted.length && a.every((b, i) => b === wanted[i]);
 }

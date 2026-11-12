@@ -496,6 +496,9 @@ export async function cancel(
 // REVISAR PEDIDOS VENCIDOS
 // ==========================================
 
+/** Tiempo que un pedido puede seguir "held" mientras se confirma. */
+export const HELD_GRACE_MS = 2 * 60_000;
+
 export async function sweep(
   state: StallState,
   now = new Date(),
@@ -506,7 +509,16 @@ export async function sweep(
 
   for (const reservation of state.reservations) {
     try {
-      if (reservation.status === "held") {
+      if (
+        reservation.status === "held" &&
+        // Un pedido "held" de hace segundos se está
+        // confirmando ahora mismo (otra petición).
+        // Vencerlo con esta foto vieja de la base
+        // vencía pedidos recién confirmados.
+        now.getTime() -
+          new Date(reservation.createdAt).getTime() >
+          HELD_GRACE_MS
+      ) {
         changed =
           (await cancel(
             state.slug,

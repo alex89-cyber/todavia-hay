@@ -126,7 +126,12 @@ async function sendTo(slug: string, reservationId: string | null, build: (lang: 
         sent++;
       } catch (e) {
         const code = (e as { statusCode?: number }).statusCode ?? 0;
-        if ([404, 410].includes(code)) await store.dropPush(slug, t.endpoint).catch(() => {});
+        // 404/410: ya no existe. 401/403: se hizo con otras llaves VAPID
+        // (cambiaron en Render); nunca va a servir, el cliente vuelve a tocar Avísame.
+        if ([401, 403, 404, 410].includes(code)) {
+          await store.dropPush(slug, t.endpoint).catch(() => {});
+          if (code === 401 || code === 403) console.warn("push: suscripción vieja borrada", why(e));
+        }
         else console.error("push: send failed", why(e));
       }
     }),

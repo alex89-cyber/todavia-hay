@@ -33,6 +33,19 @@ describe("sweep", () => {
     vi.clearAllMocks();
   });
 
+  // Otra petición revisa vencidos mientras el chat confirma el pedido:
+  // con la foto vieja ("held") no debe vencer el pedido recién confirmado.
+  it("does not expire an order that is being confirmed right now", async () => {
+    const now = new Date();
+    const s = (await store.get(SLUG))!;
+    const r = await store.reserve(SLUG, "Ana Ramírez", [{ dishId: s.dishes[0].id, qty: 1 }], new Date(now.getTime() + 50 * MIN));
+    if (!r.ok) throw new Error(r.reason);
+    const stale = structuredClone((await store.get(SLUG))!);
+    await store.markAuthorized(SLUG, r.reservation.id, null);
+    await sweep(stale, now);
+    expect((await store.getReservation(SLUG, r.reservation.id))?.status).toBe("authorized");
+  });
+
   // Pay at pickup: nothing is held, so a no-show is just released, never charged.
   it("releases an order nobody picked up after the tolerance, without charging", async () => {
     const now = new Date();
