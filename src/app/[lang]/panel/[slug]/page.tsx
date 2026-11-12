@@ -5,7 +5,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 
-import { OwnerLogin } from "@/components/OwnerLogin";
+import { PanelNoAccess } from "@/components/PanelNoAccess";
 import { OwnerPanel } from "@/components/OwnerPanel";
 
 import {
@@ -103,9 +103,10 @@ async function Panel({
 
   if (!authorized) {
     return (
-      <OwnerLogin
+      <PanelNoAccess
+        lang={lang}
         stallName={state.name}
-        t={t}
+        back={`/${lang}/panel/${slug}`}
       />
     );
   }
