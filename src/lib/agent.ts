@@ -1074,6 +1074,15 @@ export async function chat(
 
   let reservationAttempted = false;
 
+  // Por qué falló el último intento de apartar
+  // (para decirle al cliente la razón real).
+  let reserveFailure:
+    | {
+        reason: string;
+        times: string[];
+      }
+    | null = null;
+
   const signedIn =
     accounts.customer;
 
@@ -1450,6 +1459,11 @@ export async function chat(
             picked.options,
           );
 
+        reserveFailure = {
+          reason: picked.reason,
+          times: pickupChoices.times,
+        };
+
         const why = {
           closed:
             "The business is closed.",
@@ -1532,6 +1546,11 @@ export async function chat(
         );
 
       if (!res.ok) {
+        reserveFailure = {
+          reason: res.reason,
+          times: [],
+        };
+
         const why = {
           closed:
             "The business is closed.",
@@ -1891,15 +1910,31 @@ export async function chat(
       )
     )
   ) {
+    // TS no ve que la herramienta la cambia.
+    const failure = reserveFailure as {
+      reason: string;
+      times: string[];
+    } | null;
+
     console.warn(
       "Gemini intentó confirmar sin una reservación válida.",
       {
         reservationAttempted,
+        reason: failure?.reason ?? null,
       },
     );
 
-    reply =
-      ctx.lang === "es"
+    const failureText = failure
+      ? reserveFailureText(
+          failure.reason,
+          failure.times,
+          ctx.lang,
+        )
+      : null;
+
+    reply = failureText
+      ? failureText
+      : ctx.lang === "es"
         ? reservationAttempted
           ? "No pude confirmar tu pedido. Todavía no se ha generado un NIP. Revisemos los datos antes de intentarlo nuevamente."
           : "Tu pedido todavía no está confirmado. Necesito completar la reservación antes de darte un NIP."
@@ -1975,4 +2010,49 @@ function describe(
   }
 
   return String(error);
+}
+
+/**
+ * Mensaje para el cliente cuando no se pudo apartar,
+ * con la razón real (horario, inventario, etc.).
+ */
+export function reserveFailureText(
+  reason: string,
+  times: string[],
+  lang: "es" | "en",
+): string | null {
+  const es = lang === "es";
+  const list = times.slice(0, 6).join(", ");
+
+  switch (reason) {
+    case "closed":
+    case "outside_hours":
+      return es
+        ? "No pude confirmar tu pedido: el negocio ya no está recibiendo pedidos en este momento (está cerrado o fuera de su horario). Intenta cuando vuelva a abrir."
+        : "I couldn't confirm your order: the business isn't taking orders right now (it's closed or outside its hours). Try again when it reopens.";
+    case "closing":
+      return list
+        ? es
+          ? `No pude confirmar tu pedido para ahorita: ya no alcanza a estar listo antes de que cierre el negocio. Horas libres hoy: ${list}.`
+          : `I couldn't confirm your order for now: it can't be ready before closing. Times left today: ${list}.`
+        : es
+          ? "No pude confirmar tu pedido: el negocio está por cerrar y ya no alcanza a prepararlo hoy."
+          : "I couldn't confirm your order: the business is about to close and can't prepare it today.";
+    case "too_soon":
+    case "full":
+    case "bad_time":
+      return list
+        ? es
+          ? `Esa hora ya no está disponible. Horas libres hoy: ${list}. ¿Cuál te queda?`
+          : `That time isn't available anymore. Times left today: ${list}. Which one works?`
+        : es
+          ? "Esa hora ya no está disponible y ya no quedan horas libres hoy."
+          : "That time isn't available and there are no times left today.";
+    case "short":
+      return es
+        ? "No pude confirmar tu pedido: ya no alcanza lo que queda para esa cantidad. ¿Quieres pedir menos o cambiar algún platillo?"
+        : "I couldn't confirm your order: there isn't enough left for that quantity. Want fewer or a different dish?";
+    default:
+      return null;
+  }
 }
