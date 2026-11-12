@@ -4,6 +4,7 @@ import { z } from "zod";
 import { currentAccount } from "@/lib/auth/server";
 import { admin, findUserByEmail } from "@/lib/accounts";
 import { origin as publicOrigin, sameOrigin } from "@/lib/origin";
+import { isDemoBusiness } from "@/lib/demo";
 
 import {
   getBusinessPlan,
@@ -304,6 +305,15 @@ export async function POST(
 
   const { slug } = await ctx.params;
 
+  // En la demo pública no se invita ni se quita personal:
+  // mandaría correos a cualquiera y rompería las cuentas de prueba.
+  if (isDemoBusiness(slug)) {
+    return Response.json(
+      { error: "En la demo no se puede cambiar el personal." },
+      { status: 403 },
+    );
+  }
+
   // 2. Verificar propietario.
   let access: Awaited<
     ReturnType<typeof ownerBusiness>
@@ -557,6 +567,15 @@ export async function DELETE(
   }
 
   const { slug } = await ctx.params;
+
+  // En la demo pública no se invita ni se quita personal:
+  // mandaría correos a cualquiera y rompería las cuentas de prueba.
+  if (isDemoBusiness(slug)) {
+    return Response.json(
+      { error: "En la demo no se puede cambiar el personal." },
+      { status: 403 },
+    );
+  }
 
   // 2. Verificar propietario.
   let access: Awaited<

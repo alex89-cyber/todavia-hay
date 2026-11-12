@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDictionary, hasLocale } from "@/dictionaries";
 import { ContactSection } from "@/components/ContactSection";
+import { DemoRoles } from "@/components/DemoRoles";
 
 export default async function Home({
   params,
@@ -303,6 +304,8 @@ export default async function Home({
       {/* ==========================================
           FRANJA
       ========================================== */}
+
+      <DemoRoles lang={lang} />
 
       <section className="border-y border-[#E6ECE3] bg-[#F0F4ED]">
         <div className="mx-auto grid max-w-7xl gap-5 px-5 py-7 text-center sm:grid-cols-3 sm:px-8 lg:px-12">
