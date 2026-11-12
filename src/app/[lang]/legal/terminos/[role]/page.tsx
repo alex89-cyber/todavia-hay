@@ -261,6 +261,16 @@ const EN_INTRO: Record<Role, string> = {
     "This document governs restaurant owner access to Todavía Hay. Before publication, the complete English version must be reviewed and approved.",
 };
 
+// Las tres versiones se generan al compilar. Sin esto, la compilación
+// falla porque [role] no se conoce de antemano (Cache Components).
+export function generateStaticParams() {
+  return [
+    { role: "customer" },
+    { role: "employee" },
+    { role: "owner" },
+  ];
+}
+
 export default async function TermsPage({
   params,
 }: {
